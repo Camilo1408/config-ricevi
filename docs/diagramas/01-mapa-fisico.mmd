@@ -1,0 +1,17 @@
+flowchart LR
+  subgraph CABEZAL["Cabezal de corte"]
+    C1["CAM01 frontal"]
+    C2["CAM02 post. izq."]
+    C3["CAM03 post. der."]
+    NU1["NU01 altura izq."]
+    NU2["NU02 altura der."]
+    NH1["NH01 molinete"]
+  end
+  subgraph MAQ["Tolva y chasis"]
+    C4["CAM04 superficie<br/>+ iluminación LED"]
+    NH2["NH02 rueda"]
+  end
+  CABEZAL -.->|"Wi-Fi"| AP["AP01<br/>punto de acceso<br/>2,4 GHz, a la sombra"]
+  MAQ -.->|"Wi-Fi"| AP
+  HMI["HMI01<br/>tablet en cabina"] -.->|"Wi-Fi"| AP
+  AP ===|"Ethernet"| RPI["RPI01 · cabina<br/>Raspberry Pi 5 8 GB<br/>SSD NVMe 512 GB<br/>alimentada de la máquina"]

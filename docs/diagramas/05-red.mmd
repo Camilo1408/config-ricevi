@@ -1,0 +1,9 @@
+flowchart TD
+  subgraph LAN["RiceVi-M01 · 2,4 GHz · WPA2 · 192.168.40.0/24"]
+    AP["AP01 · 192.168.40.1<br/>canal fijo · aislamiento de clientes DESACTIVADO"]
+    CAMS["CAM01 .11 · CAM02 .12<br/>CAM03 .13 · CAM04 .14"] --- AP
+    SENS["NH01 .21 · NH02 .22<br/>NU01 .23 · NU02 .24"] --- AP
+    UI["HMI01 .30"] --- AP
+  end
+  AP ===|"Ethernet"| RPI["RPI01 · 192.168.40.2"]
+  RPI -.->|"solo para sincronizar,<br/>nunca en el camino crítico"| W["Hotspot celular"]

@@ -1,0 +1,64 @@
+# ricevi-central.service - La central de campo como servicio del sistema.
+#
+# instalar_pi.sh sustituye __RAIZ__, __USUARIO__ y __DATOS__ y lo copia a
+# /etc/systemd/system/.
+#
+#   sudo systemctl start ricevi-central
+#   journalctl -u ricevi-central -f
+#
+# PARA PASAR A LA FASE DE INFERENCIA, cuando haya pesos:
+#   sudo systemctl edit ricevi-central
+#   [Service]
+#   Environment=RICEVI_MODELO=ncnn
+
+[Unit]
+Description=RiceVi - central de captura e inferencia en campo
+Documentation=file://__RAIZ__/docs/manual-de-campo.md
+# network-online y no network: con network a secas el servicio puede arrancar
+# antes de tener IP, fallar al abrir el socket y consumir reintentos.
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USUARIO__
+WorkingDirectory=__RAIZ__/central
+Environment=PYTHONUNBUFFERED=1
+Environment=RICEVI_DIR_DATOS=__DATOS__
+Environment=RICEVI_TOKENS=__DATOS__/tokens.json
+# FASE DE DATASET por defecto. Un sistema que arranca inventando porcentajes es
+# peor que uno que no diagnostica: el numero falso acaba en la tesis.
+Environment=RICEVI_MODELO=ninguno
+
+ExecStart=__RAIZ__/.venv/bin/uvicorn app.main:app \
+          --host 0.0.0.0 --port 8000 \
+          --log-level info --no-access-log
+
+# always y no on-failure: si el proceso termina por cualquier motivo durante una
+# jornada, hay que volver a capturar. Un exit limpio inesperado tambien merece
+# reinicio.
+Restart=always
+RestartSec=5
+# Sin esto, un fallo que se repite deja el servicio parado tras cinco intentos
+# y la jornada se pierde en silencio.
+StartLimitIntervalSec=0
+
+# Parada ordenada: la central cierra la base y consolida el WAL en su ciclo de
+# vida. 40 s de margen es de sobra y evita que systemd la mate a mitad.
+KillSignal=SIGTERM
+TimeoutStopSec=40
+
+# La captura es lo prioritario de esta maquina.
+Nice=-5
+IOSchedulingClass=best-effort
+IOSchedulingPriority=2
+
+# El proceso no necesita tocar nada fuera de su proyecto y sus datos.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=false
+ReadWritePaths=__DATOS__
+
+[Install]
+WantedBy=multi-user.target

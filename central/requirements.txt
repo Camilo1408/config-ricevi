@@ -1,0 +1,27 @@
+# Dependencias de la central de campo.
+#
+# VERSIONES FIJADAS A PROPOSITO. Una actualizacion a mitad de campana que
+# cambie el comportamiento de una de estas librerias puede alterar tiempos de
+# inferencia y, en el peor caso, resultados. Antes de salir a campo se congela
+# la imagen del sistema y se clona.
+#
+# Se instalan sin red desde wheelhouse/ (ver instalar_pi.sh). Las ruedas son
+# aarch64 / cp311, que es lo que trae Raspberry Pi OS Bookworm.
+
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+pydantic==2.13.5
+python-multipart==0.0.9
+psutil==6.0.0
+jinja2==3.1.4
+
+# Solo para la fase de inferencia. En la fase de dataset no se importan, asi
+# que la central arranca aunque no esten.
+#   numpy y opencv los necesita modelos/ncnn_segmentacion.py
+#   ncnn no esta en PyPI para aarch64: se compila en la Pi o se usa una rueda
+#   propia. Mientras no este, RICEVI_MODELO=ninguno funciona sin ellos.
+numpy==1.26.4
+opencv-python-headless==4.10.0.84 ; platform_machine == "aarch64"
+
+# Solo si se usa el apagado por senal de contacto (config.GPIO_CONTACTO).
+gpiozero==2.0.1 ; platform_machine == "aarch64"

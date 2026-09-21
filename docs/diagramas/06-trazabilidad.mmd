@@ -1,0 +1,8 @@
+flowchart TD
+  A["Un número en el HMI"] --> B["tabla resultados:<br/>frame_id, modelo y versión"]
+  B --> C["tabla frames → archivo<br/>M01-R003-CAM02-B03-000036.jpg"]
+  B --> CTX["tabla estado_maquina:<br/>velocidad, altura y reel index<br/>del instante, con su edad"]
+  C --> V{"¿el sha256 del archivo es<br/>el que declaró el nodo?"}
+  CTX --> ACT["acta de sesión:<br/>config_version, censo_version<br/>y calibración de ese día"]
+  V -->|"Sí"| OK["Son los octetos que<br/>salieron de la cámara"]
+  V -->|"No"| MAL["Integridad rota:<br/>el frame no entra al dataset"]

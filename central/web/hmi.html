@@ -1,0 +1,246 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>RiceVi · cabina</title>
+<!--
+  hmi.html - La pantalla del operario.
+
+  DOS REGLAS QUE GOBIERNAN ESTE ARCHIVO
+  -------------------------------------
+  1. Un porcentaje NULO no se dibuja como cero. Se escribe "sin modelo" o el
+     estado que corresponda. Sin esto, la fase de dataset produciria una
+     pantalla llena de ceros que alguien acabaria interpretando como medidas.
+  2. Todo valor va con su edad. Una altura de 30 cm medida hace 100 ms y una
+     medida hace 4 s son dos cosas distintas, y el operario tiene que poder
+     distinguirlas de un vistazo.
+
+  Se sirve desde la propia Pi y se abre en cualquier navegador de la red local.
+  Sondeo a 2 Hz: suficiente para un operario y trivial para la CPU.
+-->
+<style>
+  :root{
+    --fondo:#10151b; --panel:#182028; --linea:#2a3642;
+    --texto:#e8edf2; --suave:#93a3b4;
+    --bien:#4ec97a; --medio:#e8b84b; --mal:#e8604b; --nulo:#5a6b7c;
+    --acento:#6aa8e8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--fondo);color:var(--texto);
+       font:15px/1.4 system-ui,Segoe UI,Roboto,sans-serif}
+  header{display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;
+         padding:10px 16px;background:var(--panel);border-bottom:1px solid var(--linea)}
+  header h1{font-size:17px;margin:0;letter-spacing:.5px}
+  .sesion{color:var(--suave);font-size:13px}
+  .aviso{margin-left:auto;padding:3px 10px;border-radius:12px;font-size:13px;font-weight:600}
+  main{padding:14px;display:grid;gap:14px;
+       grid-template-columns:repeat(auto-fit,minmax(290px,1fr))}
+  .caja{background:var(--panel);border:1px solid var(--linea);border-radius:10px;padding:12px 14px}
+  .caja h2{margin:0 0 10px;font-size:12px;text-transform:uppercase;
+           letter-spacing:1.2px;color:var(--suave);font-weight:600}
+  .grande{font-size:34px;font-weight:600;line-height:1.1}
+  .sinmodelo{font-size:20px;font-weight:600;color:var(--nulo)}
+  .edad{font-size:12px;color:var(--suave);margin-top:3px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  td,th{padding:4px 6px;text-align:left;border-bottom:1px solid var(--linea)}
+  th{color:var(--suave);font-weight:600;font-size:11px;text-transform:uppercase}
+  tr:last-child td{border-bottom:none}
+  .num{text-align:right;font-variant-numeric:tabular-nums}
+  .punto{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px}
+  .on{background:var(--bien)} .off{background:var(--mal)}
+  .b{color:var(--bien)} .m{color:var(--medio)} .x{color:var(--mal)} .n{color:var(--nulo)}
+  .barra{height:5px;background:var(--linea);border-radius:3px;overflow:hidden;margin-top:6px}
+  .barra i{display:block;height:100%;background:var(--acento)}
+</style>
+
+<header>
+  <h1>RiceVi</h1>
+  <span class="sesion" id="sesion">conectando…</span>
+  <span class="aviso" id="modo"></span>
+</header>
+
+<main>
+  <div class="caja" style="grid-column:1/-1">
+    <h2>Diagnóstico por cámara</h2>
+    <div id="camaras" style="display:grid;gap:14px;
+         grid-template-columns:repeat(auto-fit,minmax(200px,1fr))"></div>
+  </div>
+
+  <div class="caja">
+    <h2>Estado de la máquina</h2>
+    <table id="maquina"></table>
+  </div>
+
+  <div class="caja">
+    <h2>Nodos</h2>
+    <table id="nodos"></table>
+  </div>
+
+  <div class="caja">
+    <h2>Central</h2>
+    <table id="central"></table>
+  </div>
+</main>
+
+<script>
+const $ = s => document.querySelector(s);
+
+// Un valor nulo NO se dibuja como cero. Es la regla mas importante del archivo.
+const num = (v, d = 1, u = "") =>
+  (v === null || v === undefined) ? '<span class="n">—</span>'
+                                  : v.toFixed(d) + u;
+
+const edad = s => {
+  if (s === null || s === undefined) return '<span class="n">—</span>';
+  const c = s < 2 ? 'b' : s < 5 ? 'm' : 'x';
+  return `<span class="${c}">hace ${s.toFixed(1)} s</span>`;
+};
+
+const TEXTO_ESTADO = {
+  sin_modelo: "sin modelo",
+  roi_vacio: "ROI vacío",
+  no_evaluable: "no evaluable",
+  vencido: "vencido",
+  error_decodificar: "error de imagen",
+  error_modelo: "error del modelo",
+};
+
+function camaras(d) {
+  const porCam = {};
+  for (const r of d.resultados) porCam[r.camera_id] = r;
+  const ids = ["CAM01", "CAM02", "CAM03", "CAM04"];
+  const nombre = {CAM01:"Frontal · acame", CAM02:"Posterior izq.",
+                  CAM03:"Posterior der.", CAM04:"Tolva"};
+
+  $("#camaras").innerHTML = ids.map(id => {
+    const r = porCam[id];
+    let cuerpo;
+    if (!r) {
+      cuerpo = '<div class="sinmodelo">sin datos</div>';
+    } else if (r.estado === "valido" && r.porcentaje !== null) {
+      const c = r.porcentaje < 20 ? "b" : r.porcentaje < 40 ? "m" : "x";
+      cuerpo = `<div class="grande ${c}">${r.porcentaje.toFixed(2)} %</div>`;
+    } else {
+      // Aqui es donde se evita que un hueco parezca un cero.
+      cuerpo = `<div class="sinmodelo">${TEXTO_ESTADO[r.estado] || r.estado}</div>`;
+    }
+    const e = r ? edad((d.session_us - r.capture_session_us) / 1e6) : "";
+    return `<div><h2>${nombre[id]}</h2>${cuerpo}
+            <div class="edad">${e}</div></div>`;
+  }).join("");
+}
+
+function maquina(d) {
+  const m = d.estado_maquina || {};
+  const f = (etiqueta, v, u, ed, dec = 1) =>
+    `<tr><td>${etiqueta}</td><td class="num">${num(v, dec, u)}</td>
+     <td class="num">${ed === null || ed === undefined
+       ? '<span class="n">—</span>'
+       : edad(ed / 1000)}</td></tr>`;
+
+  let filas =
+    `<tr><th>Variable</th><th class="num">Valor</th><th class="num">Edad</th></tr>` +
+    f("Molinete", m.reel_rpm, " rpm", m.reel_rpm_edad_ms) +
+    f("Velocidad", m.wheel_speed_mps, " m/s", m.wheel_speed_edad_ms, 2) +
+    f("Altura izq.", m.altura_izq_mm, " mm", m.altura_izq_edad_ms, 0) +
+    f("Altura der.", m.altura_der_mm, " mm", m.altura_der_edad_ms, 0);
+
+  // El reel index lleva su estado: si es nulo, se dice por que. "speed_too_low"
+  // no es lo mismo que "sin_calibrar", y el operario no tiene por que saberlo,
+  // pero quien diagnostique si.
+  const ri = m.reel_index !== null && m.reel_index !== undefined
+    ? m.reel_index.toFixed(2)
+    : `<span class="n">${(m.ri_estado || "—").replace(/_/g, " ")}</span>`;
+  filas += `<tr><td>Reel index</td><td class="num">${ri}</td>
+            <td class="num">${m.ri_pairing_skew_ms != null
+              ? m.ri_pairing_skew_ms + " ms" : ""}</td></tr>`;
+
+  if (m.nodos_ausentes)
+    filas += `<tr><td colspan="3" class="x">Sin dato de: ${m.nodos_ausentes}</td></tr>`;
+  $("#maquina").innerHTML = filas;
+}
+
+function nodos(d) {
+  let filas = `<tr><th></th><th>Nodo</th><th class="num">Batería</th>
+               <th class="num">RTT</th><th class="num">Envíos</th>
+               <th class="num">Visto</th></tr>`;
+  for (const n of d.nodos) {
+    const env = n.tipo === "camara" ? n.frames : n.muestras;
+    // Cada nodo lleva su propio paquete de 18650: saber cuál se está agotando
+    // es lo que evita perder una vista a mitad de jornada sin aviso.
+    const cb = {ok:"b", aviso:"m", critico:"x", sin_dato:"n"}[n.bateria_estado];
+    const bat = n.bateria_mv == null
+      ? '<span class="n">—</span>'
+      : `<span class="${cb}">${(n.bateria_mv/1000).toFixed(2)} V`
+        + (n.bateria_pct != null ? ` · ${n.bateria_pct}%` : "") + `</span>`;
+    filas += `<tr>
+      <td><span class="punto ${n.en_linea ? "on" : "off"}"></span></td>
+      <td>${n.node_id}</td>
+      <td class="num">${bat}</td>
+      <td class="num">${n.rtt_us ? (n.rtt_us / 1000).toFixed(1) + " ms"
+                                 : '<span class="n">—</span>'}</td>
+      <td class="num">${env || 0}${n.pendientes_sd
+          ? ` <span class="m">+${n.pendientes_sd}</span>` : ""}</td>
+      <td class="num">${n.edad_s != null ? n.edad_s.toFixed(0) + " s" : "—"}</td>
+    </tr>`;
+  }
+  for (const a of d.nodos_ausentes)
+    filas += `<tr><td><span class="punto off"></span></td>
+              <td>${a}</td><td colspan="4" class="x">nunca se registró</td></tr>`;
+  $("#nodos").innerHTML = filas;
+}
+
+function central(d) {
+  const s = d.salud, i = d.inferencia, t = d.turnos;
+  const cTemp = s.temp_c == null ? "n" : s.temp_c < 65 ? "b"
+                : s.temp_c < 75 ? "m" : "x";
+  const gb = (s.libre_mb / 1024).toFixed(1);
+  const pct = Math.min(100, 100 * s.libre_mb / (s.libre_mb + 1));
+
+  $("#central").innerHTML = `
+    <tr><td>CPU</td><td class="num">${s.cpu_pct.toFixed(0)} %</td></tr>
+    <tr><td>Temperatura</td>
+        <td class="num ${cTemp}">${num(s.temp_c, 1, " °C")}
+        ${s.estado_termico !== "nominal"
+          ? ` <span class="m">(${s.estado_termico})</span>` : ""}</td></tr>
+    <tr><td>Disco libre</td><td class="num">${gb} GB
+        <div class="barra"><i style="width:${pct}%"></i></div></td></tr>
+    <tr><td>Cola inferencia</td>
+        <td class="num">${i.cola_ocupada} / ${i.cola_maxima}</td></tr>
+    <tr><td>Descartados</td>
+        <td class="num">${i.descartados_cola + i.descartados_vencidos
+                          + i.descartados_termico}</td></tr>
+    <tr><td>Turnos denegados</td><td class="num">${t.denegados}</td></tr>
+    <tr><td>Frames</td><td class="num">${d.contadores.frames}</td></tr>
+    <tr><td>Muestras</td><td class="num">${d.contadores.muestras}
+        ${d.contadores.muestras_nulas
+          ? ` <span class="n">(${d.contadores.muestras_nulas} nulas)</span>` : ""}</td></tr>`;
+}
+
+async function refrescar() {
+  try {
+    const d = await (await fetch("/api/status")).json();
+    $("#sesion").textContent =
+      `${d.machine_id} · sesión ${d.session_id} · hora ${d.utc_quality}`;
+
+    const m = $("#modo");
+    if (!d.salud.aceptando_frames) {
+      m.textContent = "SIN DISCO — NO SE ESTÁ CAPTURANDO";
+      m.style.background = "var(--mal)"; m.style.color = "#fff";
+    } else if (d.inferencia.modelo === "sin-modelo") {
+      // Que el operario sepa por que no ve numeros.
+      m.textContent = "FASE DE DATASET — capturando, sin diagnóstico";
+      m.style.background = "var(--nulo)"; m.style.color = "#fff";
+    } else {
+      m.textContent = `modelo ${d.inferencia.modelo} ${d.inferencia.modelo_version}`;
+      m.style.background = "var(--bien)"; m.style.color = "#08130c";
+    }
+
+    camaras(d); maquina(d); nodos(d); central(d);
+  } catch (e) {
+    $("#sesion").textContent = "sin conexión con la central";
+  }
+}
+
+refrescar();
+setInterval(refrescar, 500);
+</script>

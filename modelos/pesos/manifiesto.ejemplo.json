@@ -1,0 +1,74 @@
+{
+  "_lee_esto": [
+    "Plantilla del manifiesto que acompana a los pesos. Copiala como",
+    "manifiesto.json cuando tengas los modelos exportados a NCNN.",
+    "Sin este archivo la central NO carga nada: un modelo sin version no es",
+    "trazable, y un resultado que no se puede atribuir a una version concreta",
+    "no sirve para comparar dos jornadas."
+  ],
+
+  "version": "v0.1.0",
+  "entrenado_utc": "",
+  "dataset_version": "",
+  "notas": "Describe aqui con que datos se entreno y que limitaciones tiene.",
+
+  "metricas_del_modelo_exportado": {
+    "_nota": "Las metricas del modelo EXPORTADO Y CUANTIZADO, no las del PC de entrenamiento. Son cosas distintas y esta es la que corre en la maquina.",
+    "post_corte_iou": null,
+    "post_corte_error_abs_porcentaje": null,
+    "tolva_iou": null,
+    "acame_f1_macro": null,
+    "diferencia_con_float32": null
+  },
+
+  "tareas": {
+    "post_corte": {
+      "param": "post_corte.param",
+      "bin": "post_corte.bin",
+      "sha256_bin": "",
+      "entrada": 512,
+      "entrada_nombre": "in0",
+      "salida_nombre": "out0",
+      "hilos": 3,
+      "media": [0.0, 0.0, 0.0],
+      "escala": [0.00392157, 0.00392157, 0.00392157],
+      "clases": ["fondo", "material_util_residual", "suelo", "ignorar"],
+      "clase_objetivo": 1,
+      "clase_ignorar": 3,
+      "_nota_clase_ignorar": "Los pixeles de esta clase NO entran en el denominador del porcentaje. Meterlos diluiria el resultado de forma distinta en cada imagen, segun cuanta maquina o cielo se colara en el encuadre.",
+      "nota": "Segmentacion semantica de material util no recolectado"
+    },
+
+    "tolva": {
+      "param": "tolva.param",
+      "bin": "tolva.bin",
+      "sha256_bin": "",
+      "entrada": 512,
+      "entrada_nombre": "in0",
+      "salida_nombre": "out0",
+      "hilos": 3,
+      "media": [0.0, 0.0, 0.0],
+      "escala": [0.00392157, 0.00392157, 0.00392157],
+      "clases": ["grano", "material_no_grano", "metal", "ignorar"],
+      "clase_objetivo": 1,
+      "clase_ignorar": 3,
+      "_advertencia": "La fraccion visual de superficie SOBREESTIMA la fraccion de impurezas por masa: el material ligero flota y el grano se compacta abajo. Hasta calibrar contra muestras fisicas, esta salida se reporta como 'fraccion visual de material no grano en superficie', nunca como 'impurezas'.",
+      "nota": "Segmentacion semantica de material no grano en la superficie"
+    },
+
+    "acame": {
+      "param": "acame.param",
+      "bin": "acame.bin",
+      "sha256_bin": "",
+      "entrada": 224,
+      "entrada_nombre": "in0",
+      "salida_nombre": "out0",
+      "hilos": 2,
+      "media": [0.0, 0.0, 0.0],
+      "escala": [0.00392157, 0.00392157, 0.00392157],
+      "clases": ["erecto", "moderado", "severo"],
+      "es_clasificacion": true,
+      "nota": "Clasificacion ordinal de severidad de acame"
+    }
+  }
+}

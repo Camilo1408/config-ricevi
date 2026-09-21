@@ -1,0 +1,7 @@
+flowchart TD
+  A["Arranque de la central"] --> Q{"¿Hay pesos en modelos/pesos/?"}
+  Q -->|"No · por defecto"| D["FASE DATASET · RICEVI_MODELO=ninguno<br/>Captura, verifica y guarda. El HMI escribe<br/>«sin modelo», nunca un número"]
+  Q -->|"Sí"| I["FASE INFERENCIA · RICEVI_MODELO=ncnn<br/>Lo mismo, y además ejecuta los modelos<br/>y muestra el porcentaje con su edad"]
+  D --> E["Exportar dataset, entrenar fuera, exportar a<br/>NCNN, cuantizar y medir en la Pi real"]
+  E --> Q
+  I -.->|"si el modelo falla al cargar,<br/>vuelve sola a capturar"| D

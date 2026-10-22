@@ -4,10 +4,15 @@ Sistema de captura de dataset e inferencia in situ de RiceVi, para funcionamient
 real en campo con el hardware definitivo:
 
 - **1 × Raspberry Pi 5 (8 GB)** como central: recibe, verifica, persiste, infiere y sirve el HMI.
-- **4 × ESP32-S3-CAM** con OV3660 (`CAM01`–`CAM04`).
-- **2 × ESP32-S3** con sensor Hall (`NH01` molinete, `NH02` rueda).
-- **2 × ESP32-S3** con ultrasónico A02YYUW (`NU01` izquierdo, `NU02` derecho).
-- **1 × punto de acceso Wi-Fi 2,4 GHz** dedicado.
+- **4 × GOOUUU ESP32-S3-CAM** (N16R8) con OV3660 (`CAM01`–`CAM04`); `CAM04` con LED de tolva pulsado.
+- **2 × ESP32-C6 DevKitC** con sensor Hall HW-477 (`NH01` molinete, `NH02` rueda).
+- **2 × ESP32-C6 DevKitC** con ultrasónico RCWL-1655 en modo Trig/Echo (`NU01` izquierdo, `NU02` derecho).
+- **1 × router Tenda N301** (2,4 GHz) como punto de acceso dedicado.
+
+Cada nodo lleva 4 pilas AA Ni-MH y no lleva microSD: las imágenes van directo
+al SSD de la Pi. La central y el router se alimentan de una batería LiFePO4 de
+12 V. Nada se conecta a la cosechadora. Detalle en
+`docs/01-arquitectura-hardware.md` (versión 1.2).
 
 > **Este proyecto es independiente de `prubea-conex/`.** Aquel es el banco de
 > simulación, con hardware sustituto y sensores sintéticos, y se conserva aparte
@@ -43,7 +48,7 @@ config-ricevi-campo/
 ├── config/          censo de nodos, calibración física y configuración de red
 ├── central/         el servidor que corre en la Raspberry Pi 5
 ├── modelos/         interfaz de modelo, el nulo y el de producción
-├── nodos/           firmware de los ocho ESP32-S3
+├── nodos/           firmware de los ocho ESP32 (S3 en cámaras, C6 en sensores)
 ├── herramientas/    instalación, provisión, verificación, respaldo y exportación
 └── docs/            el manual de campo
 ```

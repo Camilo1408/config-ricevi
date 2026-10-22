@@ -88,6 +88,17 @@ class Nodo {
    * reconexion. No bloquea mas de unos milisegundos en el caso normal. */
   void atender();
 
+  /* Consola de provision por el puerto serie (115200). La usa
+   * herramientas/provisionar_nodo.py. Ordenes, una por linea:
+   *   mac                    -> "MAC xx:xx:xx:xx:xx:xx" (la de la estacion Wi-Fi)
+   *   set <clave> <valor>    -> "OK <clave>"; claves: node_id, token,
+   *                             wifi_ssid, wifi_pass, central_ip
+   *   verificar              -> lo grabado (token y clave enmascarados)
+   *   borrar                 -> borra la identidad de la NVS
+   *   reiniciar              -> "OK" y reinicia
+   * No bloquea: lee lo que haya y procesa las lineas completas. */
+  void atenderConsola();
+
   /* --- envio ------------------------------------------------------- */
 
   /* Pide turno. Devuelve true y rellena turnoId si se concedio.
@@ -151,6 +162,7 @@ class Nodo {
   void led(uint8_t r, uint8_t g, uint8_t b);
 
  private:
+  void ordenConsola(String linea);
   bool cargarIdentidad();
   bool conectarWifi();
   bool descubrirCentral();
@@ -160,6 +172,10 @@ class Nodo {
   uint32_t conJitter(uint32_t ms) const;
   void cabeceras(HTTPClient& http) const;
   String url(const char* ruta) const;
+
+  // consola de provision
+  String lineaConsola_;
+  uint32_t ultimaOrdenMs_ = 0;
 
   // identidad
   String nodeId_, token_, tipo_, rol_, bootId_;

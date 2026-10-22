@@ -2,6 +2,7 @@
 
 #include <ESPmDNS.h>
 #include <Preferences.h>
+#include <esp_mac.h>
 #include <esp_system.h>
 #include <mbedtls/sha256.h>
 
@@ -76,6 +77,86 @@ float Nodo::incertidumbreMs() const {
   float base = mejorRttUs_ / 2000.0f;
   if (edadS > RICEVI_SYNC_CADUCIDAD_S) return base + (float)edadS * 10.0f;
   return base;
+}
+
+/* ------------------------------------------------------------------ */
+/* Consola de provision                                                */
+/* ------------------------------------------------------------------ */
+
+void Nodo::atenderConsola() {
+  while (Serial.available()) {
+    char c = (char)Serial.read();
+    if (c == '\r') continue;
+    if (c == '\n') {
+      String l = lineaConsola_;
+      lineaConsola_ = "";
+      l.trim();
+      if (l.length()) { ultimaOrdenMs_ = millis(); ordenConsola(l); }
+    } else if (lineaConsola_.length() < 200) {
+      lineaConsola_ += c;
+    }
+  }
+}
+
+void Nodo::ordenConsola(String linea) {
+  String orden = linea, resto = "";
+  int esp = linea.indexOf(' ');
+  if (esp > 0) { orden = linea.substring(0, esp); resto = linea.substring(esp + 1); }
+  orden.toLowerCase();
+
+  if (orden == "mac") {
+    // La MAC de la estacion Wi-Fi: es la que ve el router y la que va en la
+    // reserva DHCP. Se lee del eFuse, sin necesidad de arrancar el Wi-Fi.
+    uint8_t m[6];
+    esp_read_mac(m, ESP_MAC_WIFI_STA);
+    Serial.printf("MAC %02X:%02X:%02X:%02X:%02X:%02X\n", m[0], m[1], m[2], m[3], m[4], m[5]);
+
+  } else if (orden == "set") {
+    int e = resto.indexOf(' ');
+    String clave = e > 0 ? resto.substring(0, e) : resto;
+    String valor = e > 0 ? resto.substring(e + 1) : "";
+    valor.trim();
+    const bool valida = clave == "node_id" || clave == "token" || clave == "wifi_ssid" ||
+                        clave == "wifi_pass" || clave == "central_ip";
+    // Las respuestas de error no repiten la clave: el script busca "OK" en la
+    // respuesta, y "token" en mayusculas contiene "OK".
+    if (!valida) { Serial.println("ERROR clave no reconocida"); return; }
+    if (valor.isEmpty()) { Serial.println("ERROR falta el valor"); return; }
+    Preferences p;
+    p.begin(RICEVI_NVS_ESPACIO, false);
+    const bool escrito = p.putString(clave.c_str(), valor) > 0;
+    p.end();
+    Serial.println(escrito ? "OK " + clave : String("ERROR no se pudo escribir en NVS"));
+
+  } else if (orden == "verificar") {
+    Preferences p;
+    p.begin(RICEVI_NVS_ESPACIO, true);
+    String id = p.getString("node_id", ""), tk = p.getString("token", "");
+    String ss = p.getString("wifi_ssid", RICEVI_WIFI_SSID);
+    String pw = p.getString("wifi_pass", "");
+    String ip = p.getString("central_ip", RICEVI_CENTRAL_IP);
+    p.end();
+    Serial.printf("node_id=%s token=%s wifi_ssid=%s wifi_pass=%s central_ip=%s\n",
+                  id.isEmpty() ? "(vacio)" : id.c_str(),
+                  tk.isEmpty() ? "(vacio)" : "********",
+                  ss.c_str(), pw.isEmpty() ? "(vacia)" : "********", ip.c_str());
+
+  } else if (orden == "borrar") {
+    Preferences p;
+    p.begin(RICEVI_NVS_ESPACIO, false);
+    p.clear();
+    p.end();
+    Serial.println("OK borrado");
+
+  } else if (orden == "reiniciar") {
+    Serial.println("OK reiniciando");
+    Serial.flush();
+    delay(100);
+    ESP.restart();
+
+  } else {
+    Serial.println("ERROR orden desconocida");
+  }
 }
 
 /* ------------------------------------------------------------------ */
@@ -287,9 +368,25 @@ bool Nodo::comenzar(const char* tipo, const char* rol) {
   rol_ = rol;
   randomSeed(esp_random());
 
+  // Ventana de provision: unos segundos escuchando la consola ANTES de tocar el
+  // Wi-Fi. Abrir el puerto serie reinicia la placa, asi que provisionar_nodo.py
+  // siempre cae dentro de esta ventana, incluso en un nodo ya provisionado que
+  // se quedaria atascado intentando una red con la clave equivocada. Mientras
+  // lleguen ordenes, la ventana se prolonga.
+  Serial.println("[ricevi] consola de provision: 'mac', 'set <clave> <valor>', "
+                 "'verificar', 'reiniciar'");
+  ultimaOrdenMs_ = 0;
+  const uint32_t inicio = millis();
+  while (millis() - inicio < RICEVI_VENTANA_CONSOLA_MS ||
+         (ultimaOrdenMs_ && millis() - ultimaOrdenMs_ < RICEVI_VENTANA_CONSOLA_MS)) {
+    atenderConsola();
+    delay(10);
+  }
+
   if (!cargarIdentidad()) {
-    // Se queda aqui para siempre, con el LED en rojo. Es deliberado.
-    while (true) { led(64, 0, 0); delay(1000); }
+    // Se queda aqui para siempre, con el LED en rojo y la consola abierta. Es
+    // deliberado: un nodo sin identidad no envia nada.
+    while (true) { led(64, 0, 0); atenderConsola(); delay(10); }
   }
 
   while (!conectarWifi()) delay(2000);
@@ -345,8 +442,13 @@ void Nodo::sincronizar() {
 
     JsonDocument r;
     if (deserializeJson(r, resp)) continue;
-    int64_t t2 = r["t2_us"] | 0;
-    int64_t t3 = r["t3_us"] | 0;
+    // as<int64_t>() y no `| 0`: con un int por defecto, ArduinoJson devuelve el
+    // 0 en cuanto el valor no cabe en 32 bits, es decir, cuando la central
+    // lleva mas de 35 minutos en marcha. El offset salia como -t1 y todas las
+    // marcas de tiempo quedaban horas en el pasado.
+    if (!r["t2_us"].is<int64_t>() || !r["t3_us"].is<int64_t>()) continue;
+    int64_t t2 = r["t2_us"].as<int64_t>();
+    int64_t t3 = r["t3_us"].as<int64_t>();
 
     // El termino (t3 - t2) resta lo que la central tardo en procesar, de modo
     // que el RTT mide solo el viaje. Sin el, con la CPU cargada de inferencia
@@ -390,6 +492,7 @@ void Nodo::sincronizar() {
 /* ------------------------------------------------------------------ */
 
 void Nodo::atender() {
+  atenderConsola();
   if (WiFi.status() != WL_CONNECTED) {
     estado_ = Estado::SinRed;
     conectarWifi();

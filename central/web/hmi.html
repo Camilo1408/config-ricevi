@@ -50,6 +50,18 @@
   .b{color:var(--bien)} .m{color:var(--medio)} .x{color:var(--mal)} .n{color:var(--nulo)}
   .barra{height:5px;background:var(--linea);border-radius:3px;overflow:hidden;margin-top:6px}
   .barra i{display:block;height:100%;background:var(--acento)}
+  .marco{position:relative;width:100%;aspect-ratio:4/3;border-radius:6px;overflow:hidden;
+         background:var(--fondo);border:1px solid var(--linea);margin-bottom:6px}
+  .marco.caida img{opacity:.25;filter:grayscale(1)}
+  .aviso-cam{position:absolute;inset:0;display:none;flex-direction:column;
+             align-items:center;justify-content:center;gap:4px;text-align:center;
+             font-weight:600;color:var(--mal);padding:8px}
+  .aviso-cam small{color:var(--texto);font-weight:400;font-size:13px}
+  .marco.caida .aviso-cam{display:flex}
+  body.sinred main{opacity:.4;filter:grayscale(.8)}
+  body.sinred #sesion{color:var(--mal);font-weight:600}
+  .vista{width:100%;height:100%;object-fit:cover;display:block}
+  .vista:not([src]){visibility:hidden}
 </style>
 
 <header>
@@ -104,14 +116,49 @@ const TEXTO_ESTADO = {
   error_modelo: "error del modelo",
 };
 
+// Vista previa: el ultimo JPEG recibido de cada camara, tal cual llego. Las
+// tarjetas se crean una sola vez y la imagen solo se pide cuando cambia el
+// frame y han pasado VISTA_MS: el enlace Wi-Fi es de los nodos, no del HMI.
+const VISTA_MS = 2000;
+// Una camara que no manda imagen en este tiempo se marca SIN CONEXION. Con
+// CAM04 a 0,5 fps, 10 s son cinco frames perdidos seguidos.
+const CAM_CAIDA_S = 10;
+
+// Hora local de un instante, con la fecha si no es de hoy. Se calcula con el
+// reloj del dispositivo que mira la pantalla: no depende de que la Pi tenga la
+// hora bien puesta en campo.
+function hora(ms) {
+  const f = new Date(ms), hoy = new Date();
+  const h = f.toLocaleTimeString("es-CO", {hour: "2-digit", minute: "2-digit",
+                                           second: "2-digit", hourCycle: "h23"});
+  return f.toDateString() === hoy.toDateString()
+    ? h : `${f.toLocaleDateString("es-CO", {day: "2-digit", month: "2-digit"})} ${h}`;
+}
+// Instante (reloj local) de algo que tenia `edadS` segundos en la ultima
+// respuesta buena de la central.
+const instanteDe = edadS => ultimaRespuesta - edadS * 1000;
+let ultimaRespuesta = null;   // ninguna respuesta buena todavia
+const IDS_CAM = ["CAM01", "CAM02", "CAM03", "CAM04"];
+const NOMBRE_CAM = {CAM01:"Frontal · acame", CAM02:"Posterior izq.",
+                    CAM03:"Posterior der.", CAM04:"Tolva"};
+const vista = {};   // camera_id -> {frame, t}
+
 function camaras(d) {
   const porCam = {};
   for (const r of d.resultados) porCam[r.camera_id] = r;
-  const ids = ["CAM01", "CAM02", "CAM03", "CAM04"];
-  const nombre = {CAM01:"Frontal · acame", CAM02:"Posterior izq.",
-                  CAM03:"Posterior der.", CAM04:"Tolva"};
 
-  $("#camaras").innerHTML = ids.map(id => {
+  if (!$("#camaras").children.length) {
+    $("#camaras").innerHTML = IDS_CAM.map(id => `<div>
+        <h2>${NOMBRE_CAM[id]}</h2>
+        <div class="marco" id="marco-${id}"><img class="vista" id="img-${id}" alt=""
+               onerror="this.removeAttribute('src')">
+          <div class="aviso-cam">SIN CONEXIÓN<small id="ult-${id}"></small></div></div>
+        <div id="txt-${id}"></div>
+        <div class="edad" id="edad-${id}"></div></div>`).join("");
+  }
+
+  const ahora = Date.now();
+  for (const id of IDS_CAM) {
     const r = porCam[id];
     let cuerpo;
     if (!r) {
@@ -123,10 +170,23 @@ function camaras(d) {
       // Aqui es donde se evita que un hueco parezca un cero.
       cuerpo = `<div class="sinmodelo">${TEXTO_ESTADO[r.estado] || r.estado}</div>`;
     }
-    const e = r ? edad((d.session_us - r.capture_session_us) / 1e6) : "";
-    return `<div><h2>${nombre[id]}</h2>${cuerpo}
-            <div class="edad">${e}</div></div>`;
-  }).join("");
+    $(`#txt-${id}`).innerHTML = cuerpo;
+    const edadS = r ? (d.session_us - r.capture_session_us) / 1e6 : null;
+    $(`#edad-${id}`).innerHTML = r ? edad(edadS) : "";
+
+    // Sin conexion: la camara lleva demasiado sin mandar imagen, o su nodo
+    // esta caido. Se deja la ultima imagen, atenuada, con su hora.
+    const n = (d.nodos || []).find(x => x.node_id === id);
+    const caida = r && (edadS > CAM_CAIDA_S || (n && !n.en_linea));
+    $(`#marco-${id}`).classList.toggle("caida", !!caida);
+    $(`#ult-${id}`).textContent = caida ? `última imagen ${hora(instanteDe(edadS))}` : "";
+
+    const v = vista[id] || {frame: null, t: 0};
+    if (r && r.frame_id && r.frame_id !== v.frame && ahora - v.t >= VISTA_MS) {
+      $(`#img-${id}`).src = `/api/frame/${encodeURIComponent(r.frame_id)}/imagen`;
+      vista[id] = {frame: r.frame_id, t: ahora};
+    }
+  }
 }
 
 function maquina(d) {
@@ -140,7 +200,9 @@ function maquina(d) {
   let filas =
     `<tr><th>Variable</th><th class="num">Valor</th><th class="num">Edad</th></tr>` +
     f("Molinete", m.reel_rpm, " rpm", m.reel_rpm_edad_ms) +
-    f("Velocidad", m.wheel_speed_mps, " m/s", m.wheel_speed_edad_ms, 2) +
+    // En km/h para el operario; la base guarda m/s.
+    f("Velocidad", m.wheel_speed_mps == null ? null : m.wheel_speed_mps * 3.6,
+      " km/h", m.wheel_speed_edad_ms, 1) +
     f("Altura izq.", m.altura_izq_mm, " mm", m.altura_izq_edad_ms, 0) +
     f("Altura der.", m.altura_der_mm, " mm", m.altura_der_edad_ms, 0);
 
@@ -157,6 +219,16 @@ function maquina(d) {
   if (m.nodos_ausentes)
     filas += `<tr><td colspan="3" class="x">Sin dato de: ${m.nodos_ausentes}</td></tr>`;
   $("#maquina").innerHTML = filas;
+}
+
+// Columna "Visto": en linea, hace cuanto; caido, SIN CONEXION con la hora de la
+// ultima vez. Sin datos en esta sesion (la central se reinicio y el nodo aun no
+// ha hablado), se dice asi en vez de mostrar un tiempo que no existe.
+function visto(n) {
+  if (n.edad_s == null)
+    return '<span class="x" title="sin datos en esta sesión">sin conexión</span>';
+  if (n.en_linea) return `<span class="b">hace ${n.edad_s.toFixed(0)} s</span>`;
+  return `<span class="x">sin conexión<br>${hora(instanteDe(n.edad_s))}</span>`;
 }
 
 function nodos(d) {
@@ -180,7 +252,7 @@ function nodos(d) {
                                  : '<span class="n">—</span>'}</td>
       <td class="num">${env || 0}${n.pendientes_sd
           ? ` <span class="m">+${n.pendientes_sd}</span>` : ""}</td>
-      <td class="num">${n.edad_s != null ? n.edad_s.toFixed(0) + " s" : "—"}</td>
+      <td class="num">${visto(n)}</td>
     </tr>`;
   }
   for (const a of d.nodos_ausentes)
@@ -217,8 +289,23 @@ function central(d) {
 }
 
 async function refrescar() {
+  let d;
   try {
-    const d = await (await fetch("/api/status")).json();
+    const r = await fetch("/api/status", {cache: "no-store"});
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    d = await r.json();
+  } catch (e) {
+    // Lo que queda en pantalla es de la ultima respuesta buena: se atenua todo
+    // y se dice de cuando es, para que nadie lo lea como dato actual.
+    document.body.classList.add("sinred");
+    $("#sesion").textContent =
+      `SIN CONEXIÓN CON LA CENTRAL · último dato ${
+        ultimaRespuesta ? hora(ultimaRespuesta) : "ninguno"} (${e.message})`;
+    return;
+  }
+  ultimaRespuesta = Date.now();
+  document.body.classList.remove("sinred");
+  try {
     $("#sesion").textContent =
       `${d.machine_id} · sesión ${d.session_id} · hora ${d.utc_quality}`;
 
@@ -237,7 +324,10 @@ async function refrescar() {
 
     camaras(d); maquina(d); nodos(d); central(d);
   } catch (e) {
-    $("#sesion").textContent = "sin conexión con la central";
+    // La central respondio, pero algo fallo al dibujar: se dice que, para no
+    // confundirlo con un corte de red.
+    console.error(e);
+    $("#sesion").textContent = `error al mostrar los datos: ${e.message}`;
   }
 }
 

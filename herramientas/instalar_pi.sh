@@ -2,7 +2,9 @@
 #
 # instalar_pi.sh - Deja la Raspberry Pi 5 lista para capturar en campo.
 #
-#   ssh ricevi-rasp@ricevi-rasp-01.local "~/config-ricevi-campo/herramientas/instalar_pi.sh"
+#   ssh -t ricevi-rasp@ricevi-rasp-01.local "~/config-ricevi-campo/herramientas/instalar_pi.sh"
+#
+# -t es obligatorio: sudo necesita una terminal para pedir la contrasena.
 #
 # Es idempotente: se puede volver a ejecutar sin romper nada.
 #

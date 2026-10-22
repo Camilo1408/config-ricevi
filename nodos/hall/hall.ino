@@ -25,12 +25,18 @@
 #include <Arduino.h>
 #include <driver/pulse_cnt.h>
 
-#include "../comun/ricevi_nodo.h"
+#include <ricevi_nodo.h>   // nodos/comun instalada como libreria (ver nodos/README.md)
 
 using ricevi::nodo;
 using ricevi::Muestra;
 
-#define PIN_HALL 4              // VERIFICAR con el acondicionamiento real
+// Señal del HW-477, despues del diodo 1N5819 y con pull-up de 10 k a 3,3 V.
+// En la ESP32-C6 el GPIO4 es pin de arranque (MTMS): se usa GPIO10.
+#if CONFIG_IDF_TARGET_ESP32C6
+#define PIN_HALL 10
+#else
+#define PIN_HALL 4
+#endif
 
 static pcnt_unit_handle_t unidad_ = nullptr;
 static pcnt_channel_handle_t canal_ = nullptr;
@@ -41,6 +47,17 @@ static int32_t acumulados_ = 0;
 static uint64_t ultimoPulsoUs_ = 0;
 static uint32_t periodoUltimoUs_ = 0;
 static int32_t ultimaCuenta_ = 0;
+
+// Ventana deslizante para la magnitud derivada. Con ventanas de 100 ms y 8
+// pulsos/vuelta, un solo pulso ya son 75 rpm y dos son 150: la RPM saltaria
+// entre 0, 75 y "fuera de rango" sin pasar nunca por los valores reales.
+// Sumando las ultimas ventanas (1 s por defecto) la resolucion baja a 7,5 rpm.
+// Los pulsos_ventana se siguen publicando por ventana: el dato crudo no cambia.
+static const size_t MAX_DESLIZ = 50;
+static int32_t deslizPulsos_[MAX_DESLIZ];
+static uint32_t deslizUs_[MAX_DESLIZ];
+static size_t deslizPos_ = 0;
+static size_t deslizLlenas_ = 0;
 
 static const size_t MAX_LOTE = 16;
 static Muestra lote_[MAX_LOTE];
@@ -54,26 +71,37 @@ static bool esRueda_ = false;
 
 /* ------------------------------------------------------------------ */
 
+// Cada llamada del contador se comprueba: si la placa rechaza la configuracion,
+// el nodo seguiria enviando "0 pulsos" para siempre y parecería un sensor sin
+// iman. Asi queda escrito en el monitor serie y en un evento.
+static bool pcntOk(esp_err_t e, const char* paso) {
+  if (e == ESP_OK) return true;
+  Serial.printf("[hall] ERROR contador de pulsos en %s: %s\n", paso, esp_err_to_name(e));
+  nodo.enviarEvento("pcnt_error", String(paso) + ": " + esp_err_to_name(e));
+  return false;
+}
+
 static void iniciarPcnt(int filtroNs) {
   pcnt_unit_config_t cfgU = {.low_limit = -1, .high_limit = 20000};
-  pcnt_new_unit(&cfgU, &unidad_);
+  if (!pcntOk(pcnt_new_unit(&cfgU, &unidad_), "new_unit")) return;
 
   pcnt_glitch_filter_config_t filtro = {.max_glitch_ns = (uint32_t)filtroNs};
-  pcnt_unit_set_glitch_filter(unidad_, &filtro);
+  pcntOk(pcnt_unit_set_glitch_filter(unidad_, &filtro), "glitch_filter");
 
   pcnt_chan_config_t cfgC = {.edge_gpio_num = PIN_HALL, .level_gpio_num = -1};
-  pcnt_new_channel(unidad_, &cfgC, &canal_);
+  if (!pcntOk(pcnt_new_channel(unidad_, &cfgC, &canal_), "new_channel")) return;
 
   // SOLO flanco de subida. Contar los dos flancos y seguir usando una
   // calibracion de un solo flanco duplicaria el resultado, y el error seria
   // exactamente un factor dos: dificil de ver en una grafica.
-  pcnt_channel_set_edge_action(canal_, PCNT_CHANNEL_EDGE_ACTION_INCREASE,
-                               PCNT_CHANNEL_EDGE_ACTION_HOLD);
-  pcnt_channel_set_level_action(canal_, PCNT_CHANNEL_LEVEL_ACTION_KEEP,
-                                PCNT_CHANNEL_LEVEL_ACTION_KEEP);
-  pcnt_unit_enable(unidad_);
-  pcnt_unit_clear_count(unidad_);
-  pcnt_unit_start(unidad_);
+  pcntOk(pcnt_channel_set_edge_action(canal_, PCNT_CHANNEL_EDGE_ACTION_INCREASE,
+                                      PCNT_CHANNEL_EDGE_ACTION_HOLD), "edge_action");
+  pcntOk(pcnt_channel_set_level_action(canal_, PCNT_CHANNEL_LEVEL_ACTION_KEEP,
+                                       PCNT_CHANNEL_LEVEL_ACTION_KEEP), "level_action");
+  pcntOk(pcnt_unit_enable(unidad_), "enable");
+  pcntOk(pcnt_unit_clear_count(unidad_), "clear");
+  pcntOk(pcnt_unit_start(unidad_), "start");
+  Serial.printf("[hall] contador de pulsos listo en GPIO%d\n", PIN_HALL);
 }
 
 static void anadir(const char* magnitud, const char* unidad, bool tiene,
@@ -161,16 +189,41 @@ void loop() {
 
   // --- magnitud derivada -------------------------------------------------
   const int ppv = nodo.plan()["pulsos_por_vuelta"] | 8;
-  const float dt = ventanaUs / 1e6f;
   JsonVariantConst cal = nodo.plan()["calibracion"][sensorId_];
 
-  if (pulsos == 0) {
-    // Ventana sin pulsos: puede ser una parada real o el sensor caido. El nodo
-    // no puede distinguirlo, asi que NO inventa un cero: lo marca como dudoso
-    // con valor nulo y que lo decida el analisis.
-    anadir(esRueda_ ? "wheel_speed" : "reel_rpm", esRueda_ ? "m/s" : "rpm",
-           false, 0.0f, "sin_pulsos", capturaUs, ventanaUs, pulsos, edadMs);
-  } else if (esRueda_) {
+  const uint32_t derivadaMs = nodo.plan()["ventana_derivada_ms"] | 1000;
+  const size_t nDesliz = constrain(derivadaMs / max<uint32_t>(ventanaMs, 1), 1u, MAX_DESLIZ);
+  deslizPulsos_[deslizPos_] = pulsos;
+  deslizUs_[deslizPos_] = ventanaUs;
+  deslizPos_ = (deslizPos_ + 1) % MAX_DESLIZ;
+  if (deslizLlenas_ < MAX_DESLIZ) deslizLlenas_++;
+  int32_t sumPulsos = 0;
+  uint64_t sumUs = 0;
+  for (size_t k = 0; k < min(nDesliz, deslizLlenas_); k++) {
+    const size_t i = (deslizPos_ + MAX_DESLIZ - 1 - k) % MAX_DESLIZ;
+    sumPulsos += deslizPulsos_[i];
+    sumUs += deslizUs_[i];
+  }
+  const float dt = sumUs / 1e6f;
+
+  // Vueltas por segundo. Con pulsos en la ventana deslizante, su media; pero
+  // nunca mas que 1/(P*t), siendo t el tiempo desde el ultimo pulso: si el
+  // siguiente pulso no ha llegado, la maquina no puede ir mas rapido que eso.
+  // Asi, al frenar, el valor baja de forma continua en vez de quedarse en la
+  // ultima media, y pasado `parada_ms` sin pulsos se publica un 0.
+  // El 0 es una parada medida (velocidad por debajo de 1 pulso cada
+  // parada_ms), no un hueco: el equipo quiere ver la maquina detenerse. Un
+  // sensor desconectado tambien daria 0; eso se vigila con el nivel del pin y
+  // los eventos, no ocultando la medida.
+  const uint32_t paradaMs = nodo.plan()["parada_ms"] | 3000;
+  float vps = 0.0f;
+  if (ultimoPulsoUs_ > 0 && edadMs >= 0 && (uint32_t)edadMs <= paradaMs) {
+    const float cota = edadMs > 0 ? 1000.0f / (ppv * (float)edadMs) : INFINITY;
+    const float media = sumPulsos > 0 ? sumPulsos / (ppv * dt) : 0.0f;
+    vps = sumPulsos > 0 ? min(media, cota) : cota;
+  }
+
+  if (esRueda_) {
     const float circ = cal["circunferencia_rueda_m"] | 0.0f;
     if (circ <= 0.0f) {
       // Sin la constante no hay magnitud derivada. Publicar una velocidad
@@ -179,12 +232,12 @@ void loop() {
       anadir("wheel_speed", "m/s", false, 0.0f, "sin_calibrar",
              capturaUs, ventanaUs, pulsos, edadMs);
     } else {
-      const float v = (pulsos * circ) / (ppv * dt);      // v = N*C / (P*dt)
+      const float v = vps * circ;                        // v = N*C / (P*dt)
       anadir("wheel_speed", "m/s", v <= 8.0f, v,
              v <= 8.0f ? "ok" : "fuera_rango", capturaUs, ventanaUs, pulsos, edadMs);
     }
   } else {
-    const float rpm = (60.0f * pulsos) / (ppv * dt);     // RPM = 60N / (P*dt)
+    const float rpm = 60.0f * vps;                       // RPM = 60N / (P*dt)
     anadir("reel_rpm", "rpm", rpm <= 120.0f, rpm,
            rpm <= 120.0f ? "ok" : "fuera_rango", capturaUs, ventanaUs, pulsos, edadMs);
   }
@@ -197,6 +250,11 @@ void loop() {
   if (enLote_ >= porLote) {
     seqLote_++;
     int c = nodo.enviarLote(lote_, enLote_, seqLote_);
+    // Diagnostico en el monitor serie: pulsos contados desde el arranque y
+    // respuesta de la central a este lote. Si al pasar el iman "pulsos" no
+    // sube, el problema esta en el cableado o el sensor, no en la red.
+    Serial.printf("[hall] lote %u: pulsos acumulados=%ld, nivel=%d, http=%d\n",
+                  (unsigned)seqLote_, (long)acumulados_, digitalRead(PIN_HALL), c);
     if (c != 201) {
       // El lote fallido se DESCARTA, no se acumula. Acumular haria crecer la
       // memoria sin limite durante un corte largo, y la telemetria vieja no

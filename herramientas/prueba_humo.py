@@ -223,7 +223,7 @@ def main() -> int:
         # Cada nodo lleva su propio paquete 18650: el estado viaja colgado del
         # latido, sin peticiones adicionales.
         r = c.post("/v1/events", json={"node_id": "CAM02", "tipo": "latido",
-                                       "bateria_mv": 3850, "rssi_dbm": -58,
+                                       "bateria_mv": 5200, "rssi_dbm": -58,
                                        "heap_libre": 210000, "pendientes_en_sd": 3})
         comprobar("latido con estado de batería", r.status_code == 201,
                   str(r.status_code))
@@ -231,7 +231,7 @@ def main() -> int:
         s = c.get("/api/status").json()
         cam2 = next((n for n in s["nodos"] if n["node_id"] == "CAM02"), None)
         comprobar("la batería llega al estado",
-                  cam2 and cam2.get("bateria_mv") == 3850, str(cam2))
+                  cam2 and cam2.get("bateria_mv") == 5200, str(cam2))
         comprobar("la batería se clasifica",
                   cam2 and cam2.get("bateria_estado") == "ok",
                   str(cam2.get("bateria_estado") if cam2 else None))
@@ -240,7 +240,7 @@ def main() -> int:
 
         # Un paquete agotado tiene que verse como crítico, no como "va bien".
         c.post("/v1/events", json={"node_id": "NH01", "tipo": "latido",
-                                   "bateria_mv": 3050})
+                                   "bateria_mv": 4200})
         s = c.get("/api/status").json()
         nh1 = next((n for n in s["nodos"] if n["node_id"] == "NH01"), None)
         comprobar("un paquete bajo se marca crítico",
@@ -252,7 +252,7 @@ def main() -> int:
         s = c.get("/api/status").json()
         cam2 = next((n for n in s["nodos"] if n["node_id"] == "CAM02"), None)
         comprobar("un latido sin batería no borra la anterior",
-                  cam2 and cam2.get("bateria_mv") == 3850, str(cam2))
+                  cam2 and cam2.get("bateria_mv") == 5200, str(cam2))
 
         # --- HMI ---------------------------------------------------------------
         r = c.get("/api/status")

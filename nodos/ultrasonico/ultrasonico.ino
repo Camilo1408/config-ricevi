@@ -7,19 +7,21 @@
  *   NU01 -> US01 -> distance (mm) + header_height (mm)
  *   NU02 -> US02 -> distance (mm) + header_height (mm)
  *
- * EL A02YYUW NO ES UN HC-SR04
- * ---------------------------
- * No tiene TRIG/ECHO: entrega tramas por UART a 9600 bps, por su cuenta, sin
- * que nadie se las pida. Su pin RX selecciona el modo de salida y NO es una
- * entrada de disparo. Intentar "dispararlo" es un error frecuente que produce
- * un sensor que parece averiado.
+ * EL SENSOR: RCWL-1655 EN MODO GPIO (TRIG / ECHO)
+ * -----------------------------------------------
+ * Sustituye al A02YYUW del diseno v1.1. El RCWL-1655 elige su interfaz con la
+ * resistencia R7 (sin R7 = GPIO, como un HC-SR04) y viene asi de fabrica. Cada
+ * medida es:
  *
- * La trama son cuatro octetos:
+ *   1. pulso de 20 us en TRIG
+ *   2. el sensor emite y pone ECHO en alto mientras espera el rebote
+ *   3. distancia = duracion_del_alto * velocidad_del_sonido / 2
  *
- *     0xFF   ALTO   BAJO   SUMA
+ * La velocidad del sonido viene en el plan (velocidad_sonido_mps) y viaja con
+ * cada muestra a traves del calibration_id: si la temperatura real del campo
+ * difiere, la distancia se puede recalcular despues.
  *
- *     distancia_mm = ALTO * 256 + BAJO
- *     SUMA         = (0xFF + ALTO + BAJO) & 0xFF
+ * Alimentado a 3,3 V, ECHO sale a 3,3 V y entra directo al GPIO.
  *
  * LA REGLA QUE GOBIERNA ESTE ARCHIVO
  * ----------------------------------
@@ -30,18 +32,24 @@
 
 #include <Arduino.h>
 
-#include "../comun/ricevi_nodo.h"
+#include <ricevi_nodo.h>   // nodos/comun instalada como libreria (ver nodos/README.md)
 
 using ricevi::nodo;
 using ricevi::Muestra;
 
-#define PIN_RX 18          // TX del sensor -> RX del ESP32. VERIFICAR
-#define PIN_TX 17          // no se usa para disparar; ver nota de arriba
-#define UART_SENSOR Serial1
+// ESP32-C6 DevKitC (nodos de sensor): GPIO11 y GPIO10 son libres y no son pines
+// de arranque. En la S3 se conservan los del diseno original.
+#if CONFIG_IDF_TARGET_ESP32C6
+#define PIN_TRIG 11
+#define PIN_ECHO 10
+#else
+#define PIN_TRIG 17
+#define PIN_ECHO 18
+#endif
 
 static uint32_t seqMuestra_ = 0;
 static uint32_t seqLote_ = 0;
-static int32_t descartadas_ = 0;
+static int32_t sinEco_ = 0;          // medidas seguidas sin eco
 
 static const size_t MAX_LOTE = 16;
 static Muestra lote_[MAX_LOTE];
@@ -52,31 +60,33 @@ static char calibId_[32] = "";
 static int offsetBMm_ = -1;
 static int zonaCiegaMm_ = 30;
 static int rangoMaxMm_ = 4500;
+static float vSonido_ = 343.0f;      // m/s; el plan lo sobrescribe
+static uint32_t timeoutUs_ = 30000;  // ~5 m ida y vuelta
 
 // Para detectar un eco inestable hace falta recordar la lectura anterior.
 static int ultimaMm_ = -1;
 
 /* ------------------------------------------------------------------ */
 
-/* Lee una trama completa y validada. Devuelve la distancia en mm, o:
- *    -1 timeout      no llego nada en el plazo
- *    -2 checksum     llego algo y no cuadra (ruido, cableado, conector) */
-static int leerTrama(uint32_t plazoMs) {
-  const uint32_t limite = millis() + plazoMs;
-  while (millis() < limite) {
-    if (UART_SENSOR.available() < 4) { delay(1); continue; }
-    if (UART_SENSOR.peek() != 0xFF) { UART_SENSOR.read(); continue; }
+/* Dispara una medida. Devuelve la distancia en mm, o -1 si no hubo eco dentro
+ * del plazo. `capturaUs` es el instante en que el sonido toco el objeto: el
+ * disparo mas la mitad del vuelo. */
+static int medir(uint64_t& capturaUs) {
+  digitalWrite(PIN_TRIG, LOW);
+  delayMicroseconds(4);
+  digitalWrite(PIN_TRIG, HIGH);
+  delayMicroseconds(20);
+  digitalWrite(PIN_TRIG, LOW);
+  const uint64_t disparoUs = ricevi::monoUs();
 
-    uint8_t b[4];
-    UART_SENSOR.readBytes(b, 4);
-    const uint8_t suma = (uint8_t)(b[0] + b[1] + b[2]);
-    if (suma != b[3]) {
-      descartadas_++;
-      return -2;
-    }
-    return (int)b[1] * 256 + (int)b[2];
+  const unsigned long alto = pulseIn(PIN_ECHO, HIGH, timeoutUs_);
+  if (alto == 0) {
+    capturaUs = disparoUs;
+    return -1;
   }
-  return -1;
+  capturaUs = disparoUs + alto / 2;
+  // mm = us * (m/s) / 1000 / 2
+  return (int)(alto * vSonido_ / 2000.0f + 0.5f);
 }
 
 static void anadir(const char* magnitud, bool tiene, float valor,
@@ -101,7 +111,6 @@ static void anadir(const char* magnitud, bool tiene, float valor,
   m.calibrationId = calibId_[0] ? calibId_ : nullptr;
   m.distanciaCrudaMm = crudaMm;
   m.offsetBMm = offsetBMm_;
-  m.tramasDescartadas = descartadas_;
 }
 
 /* ------------------------------------------------------------------ */
@@ -110,6 +119,10 @@ void setup() {
   Serial.begin(115200);
   delay(300);
   Serial.println("\n[us] RiceVi ultrasonico " RICEVI_FIRMWARE_VERSION);
+
+  pinMode(PIN_TRIG, OUTPUT);
+  digitalWrite(PIN_TRIG, LOW);
+  pinMode(PIN_ECHO, INPUT);
 
   nodo.comenzar("sensor", "ultrasonico");
 
@@ -123,11 +136,12 @@ void setup() {
   offsetBMm_ = cal["offset_b_mm"] | -1;
   zonaCiegaMm_ = cal["zona_ciega_mm"] | 30;
   rangoMaxMm_ = cal["rango_max_mm"] | 4500;
+  vSonido_ = nodo.plan()["velocidad_sonido_mps"] | 343.0f;
+  timeoutUs_ = nodo.plan()["timeout_eco_us"] | 30000;
 
-  UART_SENSOR.begin(nodo.plan()["uart_baudios"] | 9600, SERIAL_8N1, PIN_RX, PIN_TX);
-  Serial.printf("[us] %s, %s, offset_b=%d mm, rango %d-%d mm\n",
+  Serial.printf("[us] %s, %s, offset_b=%d mm, rango %d-%d mm, v=%.0f m/s\n",
                 nodo.nodeId().c_str(), sensorId_, offsetBMm_,
-                zonaCiegaMm_, rangoMaxMm_);
+                zonaCiegaMm_, rangoMaxMm_, vSonido_);
   if (offsetBMm_ < 0)
     nodo.enviarEvento("sin_calibrar",
                       String(sensorId_) + " sin offset_b_mm: no habra altura");
@@ -141,8 +155,8 @@ void loop() {
   const size_t porLote = min<size_t>(nodo.plan()["muestras_por_lote"] | 8, MAX_LOTE);
   const uint32_t t0 = millis();
 
-  const int mm = leerTrama(periodoMs);
-  const uint64_t capturaUs = ricevi::monoUs();
+  uint64_t capturaUs = 0;
+  const int mm = medir(capturaUs);
   const uint32_t ventanaUs = (millis() - t0) * 1000;
   seqMuestra_++;
 
@@ -150,12 +164,12 @@ void loop() {
   const char* codigo;
   bool valida = false;
 
-  if (mm == -1) {
+  if (mm < 0) {
     codigo = "timeout";
-  } else if (mm == -2) {
-    codigo = "checksum";
+    sinEco_++;
   } else if (mm < zonaCiegaMm_ || mm > rangoMaxMm_) {
     codigo = "fuera_rango";
+    sinEco_ = 0;
   } else if (ultimaMm_ >= 0 && abs(mm - ultimaMm_) > 500) {
     // Salto de mas de medio metro entre lecturas consecutivas a 8 Hz. Es
     // fisicamente posible sobre terreno irregular, pero tambien es la firma de
@@ -163,9 +177,11 @@ void loop() {
     // valor y se marca DUDOSO: que lo decida el analisis, no el firmware.
     codigo = "eco_dudoso";
     valida = true;
+    sinEco_ = 0;
   } else {
     codigo = "ok";
     valida = true;
+    sinEco_ = 0;
   }
 
   anadir("distance", valida, (float)mm, codigo, capturaUs, ventanaUs,
@@ -198,16 +214,16 @@ void loop() {
     enLote_ = 0;
     nodo.led(0, 24, 0);
 
-    // Si la tasa de tramas invalidas se dispara, hay un problema fisico:
-    // cableado, conector flojo o ruido electrico. Merece un evento propio,
-    // porque la telemetria sola no distingue "sensor roto" de "eco malo".
-    if (descartadas_ > 50) {
-      nodo.enviarEvento("trama_invalida",
-                        String(descartadas_) + " tramas con checksum malo");
-      descartadas_ = 0;
-    }
+    // Muchas medidas seguidas sin eco son un problema fisico: sonda
+    // desconectada, cable de TRIG/ECHO suelto o nada al alcance. Merece un
+    // evento propio, porque la telemetria sola no distingue "sensor roto" de
+    // "no hay suelo debajo".
+    if (sinEco_ == 50)
+      nodo.enviarEvento("sin_eco", String(sensorId_) + ": 50 medidas seguidas sin eco");
   }
 
+  // El RCWL-1655 necesita unos 60 ms entre disparos para que el eco anterior se
+  // extinga; a 8 Hz hay 125 ms.
   const uint32_t gastado = millis() - t0;
   if (periodoMs > gastado) delay(periodoMs - gastado);
 }

@@ -7,15 +7,16 @@
  * EL ORDEN DE LAS COSAS, Y POR QUE
  * --------------------------------
  *   1. Capturar
- *   2. Escribir en la microSD del nodo          <- ANTES de subir
+ *   2. Escribir en la microSD del nodo          <- solo si RICEVI_SD_HABILITADA
  *   3. Pedir turno
  *   4. Subir
  *   5. Borrar de la SD solo con 201 o 200
  *
- * El paso 2 antes del 4 es lo que hace que un reinicio de la central o un corte
- * de Wi-Fi no pierdan el frame. Al volver, el nodo reenvia con el MISMO
- * frame_id y la central responde 200 sin duplicar: la idempotencia del endpoint
- * es lo que hace seguro ese reenvio.
+ * Con microSD, el paso 2 antes del 4 hace que un reinicio de la central o un
+ * corte de Wi-Fi no pierdan el frame: al volver, el nodo reenvia con el MISMO
+ * frame_id y la central responde 200 sin duplicar. En el montaje actual los
+ * nodos NO llevan microSD (todo va al SSD de la Pi): un frame que no se puede
+ * subir se pierde y el LED queda en ambar.
  *
  * ANTES DE COMPILAR
  * -----------------
@@ -23,7 +24,7 @@
  *   PSRAM: "OPI PSRAM"          <- sin esto no hay buffer para el JPEG
  *   Flash Size: 16MB (128Mb)
  *   Partition Scheme: "16M Flash (3MB APP/9.9MB FATFS)"
- *   USB CDC On Boot: Enabled
+ *   USB CDC On Boot: Disabled   <- se programa por el USB-C "TTL" (CH340C)
  *
  * El pinout de abajo es el habitual de estas placas, pero VERIFICALO contra la
  * serigrafia y el ejemplo del fabricante antes de dar nada por bueno. Lo
@@ -35,7 +36,7 @@
 #include <SD_MMC.h>
 #include <esp_camera.h>
 
-#include "../comun/ricevi_nodo.h"
+#include <ricevi_nodo.h>   // nodos/comun instalada como libreria (ver nodos/README.md)
 
 using ricevi::nodo;
 
@@ -87,7 +88,12 @@ static bool iniciarCamara() {
   // el Wi-Fi activo: capturar en RGB y comprimir despues costaria CPU y RAM
   // para obtener exactamente el mismo archivo.
   c.pixel_format = PIXFORMAT_JPEG;
-  c.frame_size = FRAMESIZE_HD;      // 1280x720; el plan puede pedir otro
+  // Se inicia en UXGA aunque se capture en HD: el tamano del buffer de cada
+  // frame se fija aqui, en el arranque, a partir de la resolucion. Iniciado en
+  // HD, un JPEG con poca luz (mucho ruido, comprime mal) no cabe y el driver lo
+  // descarta con "cam_hal: FB-OVF". aplicarPlan() pasa despues a la resolucion
+  // del plan y los buffers grandes se conservan (en PSRAM sobra sitio).
+  c.frame_size = FRAMESIZE_UXGA;
   c.jpeg_quality = 12;              // en OV, MENOR numero = MAYOR calidad
   c.fb_count = 2;
   c.fb_location = CAMERA_FB_IN_PSRAM;
@@ -118,6 +124,12 @@ static void aplicarPlan() {
   // (menor = mejor). Convertir mal aqui produce imagenes sistematicamente peores
   // de lo que dice el acta de sesion.
   s->set_quality(s, map(q, 1, 100, 63, 4));
+
+  // Orientacion: viene en el plan porque depende de como quede montada cada
+  // camara. Se corrige en el sensor, asi el JPEG guardado ya sale derecho y no
+  // hay que girar nada despues.
+  s->set_vflip(s, (nodo.plan()["voltear_v"] | false) ? 1 : 0);
+  s->set_hmirror(s, (nodo.plan()["espejo_h"] | false) ? 1 : 0);
 
   if (nodo.plan()["exposicion_manual"] | false) {
     // Solo en CAM04. Si la exposicion varia entre frames, el porcentaje
@@ -265,12 +277,13 @@ void loop() {
       borrarPendiente(seq_);
       nodo.enviarEvento("frame_rechazado", String("http=") + c);
     } else {
-      // Error de red o 507 sin disco: se conserva en la SD y se reintentara.
-      nodo.led(48, 0, 48);
+      // Error de red o 507 sin disco. Con SD se conserva y se reintentara
+      // (morado); sin SD el frame se pierde (ambar).
+      if (haySd_) nodo.led(48, 0, 48); else nodo.led(48, 24, 0);
     }
   } else {
-    // Sin turno: el frame ya esta a salvo en la SD.
-    nodo.led(48, 0, 48);
+    // Sin turno. Con SD el frame ya esta a salvo; sin SD se pierde.
+    if (haySd_) nodo.led(48, 0, 48); else nodo.led(48, 24, 0);
   }
 
   esp_camera_fb_return(fb);

@@ -229,10 +229,24 @@ CREATE INDEX IF NOT EXISTS ix_eventos_tipo ON eventos(tipo, id);
 """
 
 
+# Sesion en curso. session_us VUELVE A CERO en cada arranque de la central, asi
+# que "lo ultimo" por session_us solo tiene sentido DENTRO de una sesion: sin
+# este filtro, una fila de una sesion anterior que llego mas lejos en su reloj
+# gana a las de ahora (el HMI mostraba una imagen vieja con edad negativa y la
+# fusion podia tomar una muestra de otra sesion como la mas reciente).
+_sesion_actual = ""
+
+
 def inicializar(session_id: str, clock_epoch_id: str, inicio_utc: str,
                 censo_version: str, modelo: str, acta_json: str) -> None:
+    global _sesion_actual
+    _sesion_actual = session_id
     con = conexion()
     con.executescript(ESQUEMA)
+    # Lo volatil de cada nodo se mide en el reloj de la sesion anterior: con el
+    # reloj nuevo no significa nada. Se borra y cada nodo lo repone al hablar.
+    con.execute("""UPDATE nodos SET ultimo_visto_us=NULL, bateria_mv=NULL,
+                       rssi_dbm=NULL, heap_libre=NULL, pendientes_sd=NULL""")
     con.execute(
         """INSERT OR REPLACE INTO sesiones
            (session_id, machine_id, inicio_utc, clock_epoch_id, config_version,
@@ -264,6 +278,10 @@ def registrar_nodo(node_id: str, tipo: str, rol: str, boot_id: str, ranura: int,
                ranura_indice=excluded.ranura_indice, ip=excluded.ip,
                firmware=excluded.firmware, motivo_reinicio=excluded.motivo_reinicio,
                ultimo_visto_us=excluded.ultimo_visto_us,
+               -- Un arranque nuevo empieza sin bateria ni pendientes: si su plan
+               -- ya no mide la bateria, el valor del arranque anterior no debe
+               -- quedarse para siempre (tocar_nodo usa COALESCE).
+               bateria_mv=NULL, pendientes_sd=NULL,
                registros=nodos.registros+1""",
         (node_id, tipo, rol, boot_id, ranura, ip, firmware, motivo, session_us),
     )
@@ -413,23 +431,25 @@ def ultima_muestra(sensor_id: str, magnitud: str) -> sqlite3.Row | None:
     return conexion().execute(
         """SELECT valor, capture_session_us, calibration_id, codigo_calidad
              FROM telemetria
-            WHERE sensor_id=? AND magnitud=? AND valor IS NOT NULL
+            WHERE session_id=? AND sensor_id=? AND magnitud=? AND valor IS NOT NULL
               AND calidad != 'invalida'
          ORDER BY capture_session_us DESC LIMIT 1""",
-        (sensor_id, magnitud)).fetchone()
+        (_sesion_actual, sensor_id, magnitud)).fetchone()
 
 
 def estado_maquina_cercano(session_us: int, tolerancia_us: int) -> sqlite3.Row | None:
     return conexion().execute(
         """SELECT * FROM estado_maquina
-            WHERE session_us BETWEEN ? AND ?
+            WHERE session_id=? AND session_us BETWEEN ? AND ?
          ORDER BY ABS(session_us - ?) LIMIT 1""",
-        (session_us - tolerancia_us, session_us + tolerancia_us, session_us)).fetchone()
+        (_sesion_actual, session_us - tolerancia_us, session_us + tolerancia_us,
+         session_us)).fetchone()
 
 
 def ultimo_estado_maquina() -> sqlite3.Row | None:
     return conexion().execute(
-        "SELECT * FROM estado_maquina ORDER BY session_us DESC LIMIT 1").fetchone()
+        "SELECT * FROM estado_maquina WHERE session_id=? ORDER BY session_us DESC LIMIT 1",
+        (_sesion_actual,)).fetchone()
 
 
 def frame(frame_id: str) -> sqlite3.Row | None:
@@ -465,9 +485,11 @@ def resultado_por_camara() -> list[dict]:
              FROM resultados r JOIN frames f USING (frame_id)
              JOIN (SELECT f2.camera_id AS cam, MAX(r2.fin_session_us) AS ult
                      FROM resultados r2 JOIN frames f2 USING (frame_id)
+                    WHERE f2.session_id=?
                     GROUP BY f2.camera_id) u
                ON u.cam=f.camera_id AND u.ult=r.fin_session_us
-            ORDER BY f.camera_id""").fetchall()
+            WHERE f.session_id=?
+            ORDER BY f.camera_id""", (_sesion_actual, _sesion_actual)).fetchall()
     return [dict(f) for f in filas]
 
 
@@ -517,15 +539,19 @@ def asociar(frame_id: str, tolerancia_ms: float) -> dict:
     conserva con asociacion incompleta, no se descarta.
     """
     con = conexion()
-    f = con.execute("SELECT capture_session_us FROM frames WHERE frame_id=?",
+    f = con.execute("SELECT session_id, capture_session_us FROM frames WHERE frame_id=?",
                     (frame_id,)).fetchone()
     if f is None:
         return {"frame_id": frame_id, "encontrado": False}
 
+    # Solo telemetria de la MISMA sesion que la imagen: el mismo session_us en
+    # otra sesion es otro instante.
+    ses = f["session_id"]
     t = f["capture_session_us"]
     tol = int(tolerancia_ms * 1000)
     pares = con.execute(
-        "SELECT DISTINCT sensor_id, magnitud FROM telemetria").fetchall()
+        "SELECT DISTINCT sensor_id, magnitud FROM telemetria WHERE session_id=?",
+        (ses,)).fetchall()
 
     asociadas, ausentes = [], []
     for p in pares:
@@ -533,11 +559,11 @@ def asociar(frame_id: str, tolerancia_ms: float) -> dict:
             """SELECT sensor_id, magnitud, valor, unidad, capture_session_us,
                       ventana_us, calidad, codigo_calidad
                  FROM telemetria
-                WHERE sensor_id=? AND magnitud=? AND valor IS NOT NULL
+                WHERE session_id=? AND sensor_id=? AND magnitud=? AND valor IS NOT NULL
                   AND calidad != 'invalida'
                   AND capture_session_us BETWEEN ? AND ?
              ORDER BY ABS(capture_session_us - ?) LIMIT 1""",
-            (p["sensor_id"], p["magnitud"], t - tol, t + tol, t)).fetchone()
+            (ses, p["sensor_id"], p["magnitud"], t - tol, t + tol, t)).fetchone()
         if m is None:
             ausentes.append(f"{p['sensor_id']}.{p['magnitud']}")
         else:

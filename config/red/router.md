@@ -55,7 +55,9 @@ Las MAC salen de `config/censo.py`, y se anotan al provisionar cada placa con
 | `NH02` | `192.168.40.22` | *(anotar)* |
 | `NU01` | `192.168.40.23` | *(anotar)* |
 | `NU02` | `192.168.40.24` | *(anotar)* |
-| Diagnóstico | `.40`–`.49` | rango DHCP libre |
+| Diagnóstico | `.40`–`.99` | resto del rango DHCP |
+
+**Tenda N301:** solo acepta reservas **dentro** del rango del servidor DHCP. El rango va de `.2` a `.99` (Administración → Parámetros de LAN) y las reservas se crean en Avanzado → IP Estáticas en la LAN, en cuanto se conoce cada MAC.
 
 **Reserva DHCP y no IP estática en cada equipo.** Con la IP grabada en el nodo,
 llevar una placa al taller obliga a reconfigurarla. Con reserva, el nodo pide

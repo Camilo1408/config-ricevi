@@ -48,40 +48,40 @@ NODOS: list[dict] = [
     {"node_id": "CAM01", "tipo": "camara", "rol": "camara",
      "placa": "ESP32-S3-CAM", "vista": "frontal", "subsistema": "PRE-CORTE",
      "posicion": "Frente al cabezal, mirando el cultivo por entrar",
-     "ip": "192.168.40.11", "mac": "", "etiqueta": "CAM01 / FRONTAL"},
+     "ip": "192.168.40.11", "mac": "44:BD:8D:7C:20:80", "etiqueta": "CAM01 / FRONTAL"},
 
     {"node_id": "CAM02", "tipo": "camara", "rol": "camara",
      "placa": "ESP32-S3-CAM", "vista": "posterior_izquierda", "subsistema": "POST-CORTE",
      "posicion": "Detras del cabezal, lado izquierdo, antes de las ruedas",
-     "ip": "192.168.40.12", "mac": "", "etiqueta": "CAM02 / POST IZQ"},
+     "ip": "192.168.40.12", "mac": "44:BD:8D:7C:1D:24", "etiqueta": "CAM02 / POST IZQ"},
 
     {"node_id": "CAM03", "tipo": "camara", "rol": "camara",
      "placa": "ESP32-S3-CAM", "vista": "posterior_derecha", "subsistema": "POST-CORTE",
      "posicion": "Detras del cabezal, lado derecho, antes de las ruedas",
-     "ip": "192.168.40.13", "mac": "", "etiqueta": "CAM03 / POST DER"},
+     "ip": "192.168.40.13", "mac": "B8:1F:3F:AB:12:0C", "etiqueta": "CAM03 / POST DER"},
 
     {"node_id": "CAM04", "tipo": "camara", "rol": "camara",
      "placa": "ESP32-S3-CAM", "vista": "tolva", "subsistema": "TOLVA",
      "posicion": "Interior de la tolva, vista fija de la superficie acumulada",
-     "ip": "192.168.40.14", "mac": "", "etiqueta": "CAM04 / TOLVA"},
+     "ip": "192.168.40.14", "mac": "44:BD:8D:7C:29:40", "etiqueta": "CAM04 / TOLVA"},
 
     {"node_id": "NH01", "tipo": "sensor", "rol": "hall",
-     "placa": "ESP32-S3 N16R8", "vista": None, "subsistema": "OPERACION",
+     "placa": "ESP32-C6 DevKitC", "vista": None, "subsistema": "OPERACION",
      "posicion": "Junto al eje del molinete",
-     "ip": "192.168.40.21", "mac": "", "etiqueta": "NH01 / MOLINETE"},
+     "ip": "192.168.40.21", "mac": "98:A3:16:97:96:74", "etiqueta": "NH01 / MOLINETE"},
 
     {"node_id": "NH02", "tipo": "sensor", "rol": "hall",
-     "placa": "ESP32-S3 N16R8", "vista": None, "subsistema": "OPERACION",
+     "placa": "ESP32-C6 DevKitC", "vista": None, "subsistema": "OPERACION",
      "posicion": "Junto a la rueda instrumentada",
-     "ip": "192.168.40.22", "mac": "", "etiqueta": "NH02 / RUEDA"},
+     "ip": "192.168.40.22", "mac": "F0:F5:BD:0E:D7:30", "etiqueta": "NH02 / RUEDA"},
 
     {"node_id": "NU01", "tipo": "sensor", "rol": "ultrasonico",
-     "placa": "ESP32-S3 N16R8", "vista": None, "subsistema": "OPERACION",
+     "placa": "ESP32-C6 DevKitC", "vista": None, "subsistema": "OPERACION",
      "posicion": "Extremo izquierdo del cabezal, mirando al suelo",
      "ip": "192.168.40.23", "mac": "", "etiqueta": "NU01 / ALTURA IZQ"},
 
     {"node_id": "NU02", "tipo": "sensor", "rol": "ultrasonico",
-     "placa": "ESP32-S3 N16R8", "vista": None, "subsistema": "OPERACION",
+     "placa": "ESP32-C6 DevKitC", "vista": None, "subsistema": "OPERACION",
      "posicion": "Extremo derecho del cabezal, mirando al suelo",
      "ip": "192.168.40.24", "mac": "", "etiqueta": "NU02 / ALTURA DER"},
 ]
@@ -119,14 +119,14 @@ MAGNITUDES: dict[str, list[dict]] = {
     ],
     "US01": [
         {"magnitud": "distance", "unidad": "mm", "derivada": False,
-         "rango": [30, 4500], "descripcion": "Distancia cruda del A02YYUW"},
+         "rango": [30, 4500], "descripcion": "Distancia cruda del RCWL-1655 (Trig/Echo)"},
         {"magnitud": "header_height", "unidad": "mm", "derivada": True,
          "rango": [0, 2000], "requiere": ["offset_b_mm"],
          "descripcion": "Altura de cuchilla = distancia - offset_b"},
     ],
     "US02": [
         {"magnitud": "distance", "unidad": "mm", "derivada": False,
-         "rango": [30, 4500], "descripcion": "Distancia cruda del A02YYUW"},
+         "rango": [30, 4500], "descripcion": "Distancia cruda del RCWL-1655 (Trig/Echo)"},
         {"magnitud": "header_height", "unidad": "mm", "derivada": True,
          "rango": [0, 2000], "requiere": ["offset_b_mm"],
          "descripcion": "Altura de cuchilla = distancia - offset_b"},
@@ -171,7 +171,11 @@ PLANES: dict[str, dict] = {
         "uno_de_cada_n_infiere": 2,
         "tarea": "acame", "roi_version": "ROI-CAM01-01",
         "roi": [0.05, 0.30, 0.95, 1.00],
-        "pedir_turno": True, "guardar_en_sd_local": True,
+        "pedir_turno": True, "guardar_en_sd_local": False,
+        # Orientacion del sensor. Con la GOOUUU sobre la mesa la OV3660 sale
+        # girada 180 grados: las dos a True la enderezan. Ajustar por camara
+        # segun como quede montada; cambia con reiniciar la central y el nodo.
+        "voltear_v": True, "espejo_h": True,
         "exposicion_manual": False,
     },
     "CAM02": {
@@ -179,7 +183,11 @@ PLANES: dict[str, dict] = {
         "uno_de_cada_n_infiere": 1,
         "tarea": "post_corte", "roi_version": "ROI-CAM02-01",
         "roi": [0.10, 0.35, 0.90, 1.00],
-        "pedir_turno": True, "guardar_en_sd_local": True,
+        "pedir_turno": True, "guardar_en_sd_local": False,
+        # Orientacion del sensor. Con la GOOUUU sobre la mesa la OV3660 sale
+        # girada 180 grados: las dos a True la enderezan. Ajustar por camara
+        # segun como quede montada; cambia con reiniciar la central y el nodo.
+        "voltear_v": True, "espejo_h": True,
         "exposicion_manual": False,
     },
     "CAM03": {
@@ -187,7 +195,11 @@ PLANES: dict[str, dict] = {
         "uno_de_cada_n_infiere": 1,
         "tarea": "post_corte", "roi_version": "ROI-CAM03-01",
         "roi": [0.10, 0.35, 0.90, 1.00],
-        "pedir_turno": True, "guardar_en_sd_local": True,
+        "pedir_turno": True, "guardar_en_sd_local": False,
+        # Orientacion del sensor. Con la GOOUUU sobre la mesa la OV3660 sale
+        # girada 180 grados: las dos a True la enderezan. Ajustar por camara
+        # segun como quede montada; cambia con reiniciar la central y el nodo.
+        "voltear_v": True, "espejo_h": True,
         "exposicion_manual": False,
     },
     "CAM04": {
@@ -195,7 +207,11 @@ PLANES: dict[str, dict] = {
         "uno_de_cada_n_infiere": 3,
         "tarea": "tolva", "roi_version": "ROI-CAM04-mid",
         "roi": [0.20, 0.20, 0.80, 0.85],
-        "pedir_turno": True, "guardar_en_sd_local": True,
+        "pedir_turno": True, "guardar_en_sd_local": False,
+        # Orientacion del sensor. Con la GOOUUU sobre la mesa la OV3660 sale
+        # girada 180 grados: las dos a True la enderezan. Ajustar por camara
+        # segun como quede montada; cambia con reiniciar la central y el nodo.
+        "voltear_v": True, "espejo_h": True,
         # La tolva es el unico sitio donde la exposicion NO puede ser
         # automatica. Si varia entre frames, el porcentaje segmentado cambia por
         # razones que no tienen que ver con el material.
@@ -215,12 +231,16 @@ PLANES: dict[str, dict] = {
     },
     "NU01": {
         "muestreo_hz": 8.0, "muestras_por_lote": 8,
-        "uart_baudios": 9600, "modo_a02yyuw": "tiempo_real",
+        # RCWL-1655 en modo GPIO: tiempo maximo de espera del eco (~5 m) y
+        # velocidad del sonido usada para pasar de us a mm (346 m/s ~ 25 C).
+        "timeout_eco_us": 30000, "velocidad_sonido_mps": 346.0,
         "pedir_turno": False,
     },
     "NU02": {
         "muestreo_hz": 8.0, "muestras_por_lote": 8,
-        "uart_baudios": 9600, "modo_a02yyuw": "tiempo_real",
+        # RCWL-1655 en modo GPIO: tiempo maximo de espera del eco (~5 m) y
+        # velocidad del sonido usada para pasar de us a mm (346 m/s ~ 25 C).
+        "timeout_eco_us": 30000, "velocidad_sonido_mps": 346.0,
         "pedir_turno": False,
     },
 }
@@ -245,42 +265,41 @@ CICLO_SYNC_S = 30.0
 RANURA_S = CICLO_SYNC_S / len(ORDEN_RANURAS)
 
 # ---------------------------------------------------------------------------
-# Alimentacion por baterias 18650
+# Alimentacion: 4 pilas AA Ni-MH en serie por nodo
 # ---------------------------------------------------------------------------
 #
-# Cada nodo lleva su propio paquete: dos celdas 18650 en PARALELO (2P1S),
-# elevadas a 5 V y entregadas al pin de 5 V de la placa.
+# Decision del equipo (oct-2026), sustituye a las 18650 del diseno v1.1: cada
+# nodo lleva un portapilas de 4 AA Ni-MH en serie (4,8 V nominales) que entra
+# DIRECTO al pin 5V de la placa, sin elevador. El regulador de la placa baja a
+# 3,3 V. La tension se mide en G1 con un divisor 150 k / 100 k (factor 2,5).
 #
-# POR QUE 2P Y NO UNA SOLA CELDA: con una celda, un nodo de camara da unas 8,5 h
-# estimadas. Una jornada de cosecha puede pasar de diez horas, y ese margen se
-# lo come el envejecimiento de la celda, el calor y los reintentos de enlace.
-# Con dos celdas en paralelo el margen deja de ser una preocupacion.
-#
-# POR QUE PARALELO Y NO SERIE: en paralelo el paquete sigue siendo 1S, asi que
-# la proteccion y la carga son las de una sola celda y la medida de tension es
-# directa. En serie harian falta balanceo y un BMS de 2S para ganar una
-# eficiencia que el convertidor ya da.
+# divisor_montado: mientras el nodo funcione en la mesa por USB, sin el divisor
+# soldado, G1 queda al aire y lee cualquier cosa. Con False el nodo no mide la
+# bateria (dato nulo, nunca un numero inventado) y nunca se cree agotado. Pasar
+# a True cuando las placas perforadas lleven el divisor.
 #
 # UMBRALES: la tension se mide en el propio nodo y viaja en el latido.
 BATERIA = {
-    "quimica": "Li-ion 18650",
-    "configuracion": "2P1S",
-    "celdas_por_nodo": 2,
-    "capacidad_celda_mah": 3000,
-    "capacidad_paquete_mah": 6000,
-    "tension_nominal_v": 3.7,
-    "tension_plena_v": 4.2,
-    # Corte por descarga profunda. Por debajo de esto la celda se dana de forma
-    # permanente, asi que lo corta la proteccion del paquete, no el firmware.
-    "tension_corte_v": 3.0,
+    "quimica": "Ni-MH AA",
+    "configuracion": "4S",
+    "celdas_por_nodo": 4,
+    # La caja dice 3600 mAh; un AA Ni-MH real no pasa de ~2800. Se usa 2600
+    # hasta medir un juego con descarga completa.
+    "capacidad_celda_mah": 2600,
+    "capacidad_paquete_mah": 2600,
+    "tension_nominal_v": 4.8,
+    "tension_plena_v": 5.6,
+    # Descarga completa de 4 celdas (1,0 V/celda). Por debajo, el regulador de
+    # la placa ya no sostiene 3,3 V con el Wi-Fi transmitiendo.
+    "tension_corte_v": 4.0,
     # Umbrales que SI vigila el firmware, para avisar antes de que corte.
-    "aviso_mv": 3400,      # LED de aviso y evento
-    "critico_mv": 3150,    # el nodo avisa y deja de capturar ordenadamente
-    "divisor": "2:1 (dos resistencias de 100 k)",
+    "aviso_mv": 4500,      # LED de aviso y evento
+    "critico_mv": 4350,    # el nodo avisa y deja de capturar ordenadamente
+    "divisor": "150 k arriba / 100 k abajo (factor 2,5)",
+    "divisor_factor": 2.5,
+    "divisor_montado": False,
     "adc_pin_sugerido": 1,
-    # SIN CARGA EN LA MAQUINA. Los paquetes se cambian y se cargan fuera.
-    # Cargar Li-ion por encima de 45 C no es seguro, y una caja al sol en un
-    # arrozal pasa de eso con facilidad.
+    # SIN CARGA EN LA MAQUINA. Las pilas se cambian y se cargan fuera.
     "carga_en_maquina": False,
     "juegos_de_paquetes": 2,   # uno en la maquina, otro cargando
 }
@@ -318,10 +337,10 @@ def autonomia_estimada(rol: str) -> dict:
         # conservador y HAY QUE MEDIRLO.
         ma = int(ma * 0.55)
 
-    # El paquete eleva a 5 V y la placa baja a 3,3 V con su regulador lineal:
-    # la corriente es la misma, asi que la potencia de entrada se calcula a 5 V.
-    w_5v = ma / 1000.0 * 5.0
-    w_bateria = w_5v / 0.90                       # rendimiento del elevador
+    # Las pilas entran directo a la placa y su regulador lineal baja a 3,3 V: la
+    # corriente que sale de las pilas es la misma del riel de 3,3 V, asi que la
+    # autonomia es capacidad / corriente, sin rendimiento de convertidor.
+    w_bateria = ma / 1000.0 * BATERIA["tension_nominal_v"]
     wh_utiles = (BATERIA["capacidad_paquete_mah"] / 1000.0
                  * BATERIA["tension_nominal_v"] * 0.85)   # 85 % aprovechable
     horas = wh_utiles / w_bateria
@@ -378,8 +397,9 @@ def plan_de(node_id: str) -> dict:
         "aviso_mv": BATERIA["aviso_mv"],
         "critico_mv": BATERIA["critico_mv"],
         "corte_v": BATERIA["tension_corte_v"],
-        "adc_pin": BATERIA["adc_pin_sugerido"],
-        "divisor": 2.0,
+        # Sin divisor montado, sin pin: el nodo publica la bateria como nula.
+        "adc_pin": BATERIA["adc_pin_sugerido"] if BATERIA["divisor_montado"] else None,
+        "divisor": BATERIA["divisor_factor"],
     }
 
     if node_id in SENSORES_POR_NODO:

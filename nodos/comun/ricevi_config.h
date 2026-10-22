@@ -49,6 +49,11 @@
 #define RICEVI_FIRMWARE_VERSION  "esp32-1.0.0"
 #define RICEVI_NVS_ESPACIO       "ricevi"
 
+/* Al arrancar, el nodo escucha la consola de provision este tiempo antes de
+ * conectarse. provisionar_nodo.py abre el puerto (lo que reinicia la placa) y
+ * envia la primera orden a los 2 s: tiene que caer dentro. */
+#define RICEVI_VENTANA_CONSOLA_MS 5000
+
 /* ------------------------------------------------------------------ */
 /* Red                                                                 */
 /* ------------------------------------------------------------------ */
@@ -117,11 +122,13 @@
 /* Almacenamiento local (solo nodos de camara)                         */
 /* ------------------------------------------------------------------ */
 
-/* El JPEG se escribe en la microSD del nodo ANTES de intentar subirlo y se
- * borra solo cuando la central confirma 201. Si la Pi se reinicia o se corta la
- * energia, el frame no se pierde y se reenvia con el MISMO frame_id: la
- * idempotencia del endpoint es lo que hace seguro ese reenvio. */
-#define RICEVI_SD_HABILITADA          1
+/* DESACTIVADA (decision del equipo, oct-2026): los nodos NO llevan microSD y
+ * todo se guarda en el SSD de la Pi. Consecuencia aceptada: si la Pi esta
+ * caida o el Wi-Fi se corta, los frames de ese intervalo se pierden (el LED lo
+ * indica en ambar). Con 1, el JPEG se escribe en la microSD ANTES de subirlo y
+ * se borra solo cuando la central confirma 201; un corte no pierde el frame y
+ * se reenvia con el MISMO frame_id. */
+#define RICEVI_SD_HABILITADA          0
 #define RICEVI_SD_DIR                 "/pendientes"
 #define RICEVI_SD_MAX_PENDIENTES      400    /* ~60 MB a 150 kB por frame */
 
@@ -146,7 +153,13 @@
  *   morado           pendientes en la SD por reenviar
  */
 #define RICEVI_LED_HABILITADO         1
-#define RICEVI_LED_PIN                48     /* RGB de la placa; verificar */
+/* RGB de la placa: G48 en la GOOUUU ESP32-S3-CAM (camaras), GPIO8 en la
+ * ESP32-C6 DevKitC (nodos de sensor). */
+#if CONFIG_IDF_TARGET_ESP32C6
+#define RICEVI_LED_PIN                8
+#else
+#define RICEVI_LED_PIN                48
+#endif
 
 /* Latido a POST /v1/events. Permite al HMI saber que un nodo sigue vivo aunque
  * no tenga nada que enviar. No es redundante con la telemetria: un ultrasonico

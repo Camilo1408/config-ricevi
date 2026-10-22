@@ -47,23 +47,32 @@ ssh "$Usuario@$Equipo" "mkdir -p $Destino"
 
 $carpetas = @("central", "config", "modelos", "nodos", "herramientas", "docs")
 $sueltos  = @("README.md", ".gitignore")
+$incluir  = @($carpetas + $sueltos | Where-Object { Test-Path $_ })
 
-foreach ($c in $carpetas) {
-    if (-not (Test-Path $c)) { continue }
-    Write-Host "  $c/" -NoNewline
-    # -r y exclusiones con tar, porque scp no sabe excluir.
-    $excluir = @("--exclude=__pycache__", "--exclude=*.pyc", "--exclude=.venv")
-    if ($c -eq "modelos" -and -not $ConPesos) { $excluir += "--exclude=pesos" }
-    tar -cf - $excluir $c | ssh "$Usuario@$Equipo" "tar -xf - -C $Destino"
-    if ($LASTEXITCODE -ne 0) { Write-Host " FALLO" -ForegroundColor Red; exit 1 }
-    Write-Host " OK" -ForegroundColor Green
-}
+# Se empaqueta en un archivo local y se envia con scp. NO con
+# "tar -cf - | ssh": en Windows PowerShell 5.1 la tuberia entre dos programas
+# externos pasa los datos como texto y corrompe el tar ("Esto no parece un
+# archivo tar" en la Pi).
+$excluir = @("--exclude=__pycache__", "--exclude=*.pyc", "--exclude=.venv")
+if (-not $ConPesos) { $excluir += "--exclude=modelos/pesos" }
+$paquete = Join-Path $env:TEMP "ricevi_envio.tar"
+Remove-Item $paquete -ErrorAction SilentlyContinue
 
-foreach ($f in $sueltos) {
-    if (Test-Path $f) { scp -q $f "$Usuario@$Equipo`:$Destino/" }
-}
+Write-Host "  empaquetando $($incluir -join ', ')..." -NoNewline
+tar -cf $paquete @excluir @incluir
+if ($LASTEXITCODE -ne 0) { Write-Host " FALLO" -ForegroundColor Red; exit 1 }
+Write-Host (" OK ({0:N1} MB)" -f ((Get-Item $paquete).Length / 1MB)) -ForegroundColor Green
 
-ssh "$Usuario@$Equipo" "chmod +x $Destino/herramientas/*.sh"
+Write-Host "  enviando..." -NoNewline
+scp -q $paquete "$Usuario@$Equipo`:/tmp/ricevi_envio.tar"
+if ($LASTEXITCODE -ne 0) { Write-Host " FALLO" -ForegroundColor Red; exit 1 }
+Write-Host " OK" -ForegroundColor Green
+
+Write-Host "  desempaquetando en la Pi..." -NoNewline
+ssh "$Usuario@$Equipo" "tar -xf /tmp/ricevi_envio.tar -C $Destino && rm /tmp/ricevi_envio.tar && chmod +x $Destino/herramientas/*.sh"
+if ($LASTEXITCODE -ne 0) { Write-Host " FALLO" -ForegroundColor Red; exit 1 }
+Write-Host " OK" -ForegroundColor Green
+Remove-Item $paquete -ErrorAction SilentlyContinue
 
 Write-Host ""
 Write-Host "Copiado." -ForegroundColor Green
@@ -72,4 +81,4 @@ if (-not $ConPesos) {
 }
 Write-Host ""
 Write-Host "Siguiente paso:"
-Write-Host "  ssh $Usuario@$Equipo `"$Destino/herramientas/instalar_pi.sh`""
+Write-Host "  ssh -t $Usuario@$Equipo `"$Destino/herramientas/instalar_pi.sh`""

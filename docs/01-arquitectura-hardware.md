@@ -26,8 +26,7 @@ cada uno indica cómo comprobarlo.
 > **no llevan microSD**. La central se alimenta con una **batería LiFePO4 de
 > 12 V y 12 Ah**, y el punto de acceso es un **router Tenda N301** a 9 V. El LED
 > de la tolva es un módulo de inyección de 12 V con su propia batería de 9 V
-> (§2, §3, §4.2, §5, §9, §10, §11). Los diagramas 01, 02 y 05 todavía muestran el
-> hardware de la versión 1.1.
+> (§2, §3, §4.2, §5, §9, §10, §11).
 
 ---
 
@@ -159,8 +158,6 @@ al sistema, y montar un nodo no obliga a tirar cable hasta él.
 ### 3.1 Los nodos: cuatro pilas AA Ni-MH en serie
 
 ![Alimentación de un nodo](diagramas/02-alimentacion-nodo.png)
-
-*El diagrama todavía muestra el paquete de 18650 de la versión 1.1.*
 
 | Elemento | Especificación |
 |---|---|

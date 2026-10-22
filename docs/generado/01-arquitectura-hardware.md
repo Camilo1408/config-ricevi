@@ -1,7 +1,7 @@
 # Arquitectura y configuración del sistema RiceVi
 
 **Documento de diseño · hardware, red y flujo de datos**
-Versión 1.0 — 21 de septiembre de 2026
+Versión 1.2 — 22 de octubre de 2026
 
 Este documento describe el sistema completo tal como va montado en la
 cosechadora: qué hardware lo compone, cómo se alimenta, cómo se comunica, cómo
@@ -12,17 +12,40 @@ Los valores marcados como **estimados** son cálculos de dimensionamiento que
 todavía no se han medido sobre el montaje real. Están señalados uno a uno, y
 cada uno indica cómo comprobarlo.
 
+> **Cambios de la versión 1.1.** La central ya no se alimenta de la máquina:
+> lleva su propio paquete de baterías, y con él desaparecen la señal de contacto
+> y el apagado por llave (§3.5). La iluminación de la tolva pasa a ser pulsada y
+> comparte paquete con `CAM04` (§3.6). Se declara la limitación de la velocidad
+> estimada por rueda (§5.3), se añade la validación pendiente de los
+> ultrasónicos (§10) y se corrigen cifras de las §2.3 y §9.
+
+> **Cambios de la versión 1.2 (hardware que llegó en octubre).** Los nodos de
+> sensor pasan a **ESP32-C6 DevKitC**; el ultrasónico es el **RCWL-1655** en
+> modo Trig/Echo, no el A02YYUW; el Hall es el módulo **HW-477** (A3144). Los
+> nodos se alimentan con **4 pilas AA Ni-MH** en serie, directo al pin de 5 V, y
+> **no llevan microSD**. La central se alimenta con una **batería LiFePO4 de
+> 12 V y 12 Ah**, y el punto de acceso es un **router Tenda N301** a 9 V. El LED
+> de la tolva es un módulo de inyección de 12 V con su propia batería de 9 V
+> (§2, §3, §4.2, §5, §9, §10, §11).
+
 ---
 
 ## 1 · Qué hace el sistema y en qué dos fases
 
-RiceVi observa la operación de corte de una cosechadora de arroz con cuatro
-cámaras y cuatro sensores, guarda esa observación de forma trazable, y —cuando
-existan modelos entrenados— la analiza a bordo para dar retroalimentación al
-operario.
+RiceVi observa la operación de una cosechadora de arroz —el corte y lo que llega
+a la tolva— con cuatro cámaras y cuatro sensores, guarda esa observación de
+forma trazable, y —cuando existan modelos entrenados— la analiza a bordo para
+dar retroalimentación al operario.
 
 El alcance es **percepción, diagnóstico y sugerencia**. El operario decide si
 modifica la máquina; el sistema no acciona nada.
+
+Como el sistema observa la operación tal como ocurre, sin provocar condiciones a
+propósito, las sugerencias tienen tres límites que conviene fijar desde ahora:
+salen de **reglas documentadas** —el manual de la máquina o la literatura—, no
+de patrones hallados en los propios datos; son **cualitativas** («considere subir
+la velocidad del molinete»), no valores objetivo; y **no se afirma** que
+seguirlas reduzca las pérdidas, porque eso exigiría un experimento controlado.
 
 | Subsistema | Qué observa | Qué produce |
 |---|---|---|
@@ -30,6 +53,11 @@ modifica la máquina; el sistema no acciona nada.
 | POST-CORTE | Franja recién cortada | Fracción visual de material útil residual |
 | TOLVA | Superficie del material acumulado | Fracción visual de material no grano |
 | Operación | Molinete, rueda y distancia al suelo | RPM, velocidad estimada, alturas, *reel index* |
+
+La trilla queda fuera del alcance actual. Si más adelante sobra tiempo, podría
+añadirse etiquetando grano partido sobre las mismas fotos de la tolva, sin
+volver a campo: por eso conviene capturarlas con calidad suficiente desde el
+principio.
 
 ### 1.1 Las dos fases del mismo sistema
 
@@ -61,30 +89,39 @@ el recorrido: en el contrato, en la base de datos y en la pantalla.
 
 | ID | Equipo | Ubicación | Función |
 |---|---|---|---|
-| `RPI01` | Raspberry Pi 5, 8 GB + SSD NVMe 512 GB | Cabina | Recibe, verifica, almacena, infiere y sirve el HMI |
-| `CAM01` | ESP32-S3-CAM con OV3660 | Frente al cabezal | Cultivo antes del corte |
-| `CAM02` | ESP32-S3-CAM con OV3660 | Detrás del cabezal, izquierda | Resultado del corte |
-| `CAM03` | ESP32-S3-CAM con OV3660 | Detrás del cabezal, derecha | Resultado del corte |
-| `CAM04` | ESP32-S3-CAM con OV3660 | Interior de la tolva | Superficie del material acumulado |
-| `NH01` | ESP32-S3 + sensor Hall | Eje del molinete | Pulsos → RPM |
-| `NH02` | ESP32-S3 + sensor Hall | Rueda instrumentada | Pulsos → velocidad estimada |
-| `NU01` | ESP32-S3 + A02YYUW | Extremo izquierdo del cabezal | Distancia → altura de cuchilla |
-| `NU02` | ESP32-S3 + A02YYUW | Extremo derecho del cabezal | Distancia → altura de cuchilla |
+| `RPI01` | Raspberry Pi 5, 8 GB + SSD NVMe 128 GB | Cabina | Recibe, verifica, almacena, infiere y sirve el HMI |
+| `CAM01` | GOOUUU ESP32-S3-CAM (N16R8) con OV3660 | Frente al cabezal | Cultivo antes del corte |
+| `CAM02` | GOOUUU ESP32-S3-CAM (N16R8) con OV3660 | Detrás del cabezal, izquierda | Resultado del corte |
+| `CAM03` | GOOUUU ESP32-S3-CAM (N16R8) con OV3660 | Detrás del cabezal, derecha | Resultado del corte |
+| `CAM04` | GOOUUU ESP32-S3-CAM (N16R8) con OV3660 + LED pulsado | Interior de la tolva | Superficie del material acumulado |
+| `NH01` | ESP32-C6 DevKitC + Hall HW-477 (A3144) | Eje del molinete | Pulsos → RPM |
+| `NH02` | ESP32-C6 DevKitC + Hall HW-477 (A3144) | Rueda instrumentada | Pulsos → velocidad estimada |
+| `NU01` | ESP32-C6 DevKitC + RCWL-1655 | Extremo izquierdo del cabezal | Distancia → altura de cuchilla |
+| `NU02` | ESP32-C6 DevKitC + RCWL-1655 | Extremo derecho del cabezal | Distancia → altura de cuchilla |
 
-Más dos equipos de apoyo: `AP01`, el punto de acceso Wi-Fi de 2,4 GHz, y
-`HMI01`, una tablet o teléfono con un navegador.
+Más dos equipos de apoyo: `AP01`, el punto de acceso Wi-Fi de 2,4 GHz (un
+router Tenda N301), y `HMI01`, una tablet o teléfono con un navegador.
 
 **Ocho microcontroladores, uno por punto de captura.** Cada sensor y cada cámara
-tiene su propio ESP32-S3 junto a él.
+tiene su propio ESP32 junto a él: ESP32-S3 en las cámaras, porque necesitan la
+PSRAM para el JPEG, y ESP32-C6 en los sensores. El firmware es el mismo para
+las dos familias; los pines cambian con `CONFIG_IDF_TARGET_ESP32C6`.
+
+| Nodo | Señal | Pines de la ESP32-C6 |
+|---|---|---|
+| Hall | Salida del A3144 por un diodo 1N5819, con pull-up de 10 kΩ a 3,3 V y 100 nF a GND; el módulo se alimenta a 5 V | GPIO10 |
+| Ultrasónico | RCWL-1655 alimentado a 3,3 V, sin R7 (modo GPIO) | Trig GPIO11 · Echo GPIO10 |
+| Batería | Divisor 150 kΩ / 100 kΩ (todavía sin montar) | GPIO1 |
+| LED RGB de estado | El de la placa | GPIO8 |
 
 ### 2.2 Por qué un microcontrolador por sensor
 
 | Ventaja | Explicación |
 |---|---|
-| Cables cortos | Cada sensor queda a centímetros de su microcontrolador. Desaparecen las tiradas largas de UART y de pulsos por el chasis |
+| Cables cortos | Cada sensor queda a centímetros de su microcontrolador. Desaparecen las tiradas largas de pulsos y de eco por el chasis |
 | Aislamiento de fallas | Un nodo caído se lleva un solo sensor, no todas las variables operativas |
 | Montaje independiente | Cada caja se ubica donde conviene mecánicamente |
-| Firmware simple | Cada nodo hace una cosa. El conteo de pulsos no comparte CPU con la UART del ultrasónico |
+| Firmware simple | Cada nodo hace una cosa. El conteo de pulsos no comparte CPU con la medida de eco del ultrasónico |
 
 El coste es que hay nueve estaciones Wi-Fi compartiendo un canal, nueve relojes
 que sincronizar y nueve paquetes de batería que vigilar. Las tres cosas están
@@ -95,47 +132,51 @@ resueltas y se explican en las secciones 4, 6 y 3.
 | Elemento | Elección | Por qué |
 |---|---|---|
 | Computador | Raspberry Pi 5, 8 GB | Cuatro núcleos Cortex-A76 a 2,4 GHz. La RAM no es el recurso escaso; la CPU sí |
-| Almacenamiento | SSD NVMe 512 GB por PCIe | A 1 imagen/s por cámara son ~17 GB por jornada: una microSD ni tiene capacidad ni aguanta esa escritura a diario |
+| Almacenamiento | SSD NVMe por PCIe en un HAT M.2; hoy de 128 GB, y la Pi arranca desde él | A 1 imagen/s por cámara son ~17 GB por jornada: una microSD ni tiene capacidad ni aguanta esa escritura a diario |
 | Sistema de archivos | ext4 con *journaling* | Recuperación fiable ante un corte, a diferencia de FAT |
 | Reloj | RTC con batería | Da hora civil fiable sin Internet. Sin él, los datos quedan marcados `utc_quality: desconocida` |
 | Refrigeración | Disipador con ventilador activo | Bajo carga sostenida el SoC se estrangula a partir de 80 °C |
-| Acelerador de IA | **Ninguno** | Decisión del proyecto. La sección 8.3 documenta qué haría falta si luego se añade |
+| Acelerador de IA | **Ninguno** | Decisión del proyecto. La sección 7.3 explica el presupuesto de CPU y el escalonado térmico que lo hace viable |
 
-**Por qué 512 GB.** A 1 imagen/s por cámara, una jornada de ocho horas son
-115.200 fotografías y unos 17 GB. Con 512 GB caben unas tres jornadas, que es el
-margen para no tener que descargar cada noche sin falta.
+**Por qué 512 GB.** A 1 imagen/s por cámara, una jornada de ocho horas serían
+115.200 fotografías y unos 17 GB; con `CAM04` a 0,5 img/s, como fija el plan,
+son unas 100.800 y unos 15 GB. **Con el SSD de 128 GB montado hoy** (≈ 119 GB
+útiles, compartidos con el sistema) caben unas seis o siete jornadas: hay que
+descargar y verificar el respaldo cada pocos días. Con 512 GB serían del orden
+de treinta.
 
 ---
 
 ## 3 · Alimentación
 
-Dos sistemas independientes, y es deliberado: **la central va alimentada de la
-máquina y cada nodo lleva su propia batería**. Así, un fallo en la instalación
-eléctrica de la cosechadora no apaga los ocho nodos a la vez, y montar un nodo
-no exige tirar cable hasta él.
+**Nada se conecta a la instalación eléctrica de la cosechadora.** La central
+lleva su propio paquete de baterías y cada nodo lleva el suyo. Así no hay que
+intervenir el cableado de una máquina ajena —que es, además, la parte del
+montaje que más permisos exige—, un fallo eléctrico de la cosechadora no afecta
+al sistema, y montar un nodo no obliga a tirar cable hasta él.
 
-### 3.1 Los nodos: paquete de dos celdas 18650
+### 3.1 Los nodos: cuatro pilas AA Ni-MH en serie
 
 ![Alimentación de un nodo](diagramas/02-alimentacion-nodo.png)
 
 | Elemento | Especificación |
 |---|---|
-| Celdas | 2 × 18650 de 3000 mAh, **en paralelo** (2P1S) |
-| Capacidad del paquete | 6000 mAh a 3,7 V nominales ≈ 22,2 Wh |
-| Energía útil estimada | ≈ 18,9 Wh (85 % aprovechable hasta el corte) |
-| Protección | Placa 1S con corte por descarga profunda a 3,0 V |
-| Conversión | Elevador a 5 V, rendimiento ≈ 90 %, al pin de 5 V del nodo |
-| Medida de tensión | Divisor 2:1 al ADC del ESP32 |
-| Carga | **Fuera de la máquina.** Dos juegos de paquetes: uno montado, otro cargando |
+| Pilas | 4 × AA Ni-MH **en serie** (4S). La caja dice 3600 mAh; un AA Ni-MH real no pasa de unos 2800, así que se calcula con **2600 mAh** hasta medir un juego |
+| Tensión | 4,8 V nominales; 5,6 V recién cargadas; corte a 4,0 V (1,0 V por pila) |
+| Energía útil estimada | ≈ 10,6 Wh |
+| Conversión | **Ninguna.** El portapilas entra directo al pin de 5 V; el regulador de la placa baja a 3,3 V |
+| Protección | Fusible de 1 A e interruptor entre el portapilas y la placa. No hay placa de protección: el firmware avisa a 4,5 V y marca crítico a 4,35 V |
+| Medida de tensión | Divisor 150 kΩ / 100 kΩ (factor 2,5) al GPIO1. **Aún no está montado**: hasta entonces el nodo publica la batería como nula |
+| Carga | **Fuera de la máquina**, con el cargador de las pilas. Lo ideal son dos juegos: uno montado, otro cargando |
 
-**Por qué en paralelo y no en serie.** En paralelo el paquete sigue siendo 1S:
-la protección y la carga son las de una sola celda, y la medida de tensión es
-directa. En serie harían falta balanceo y un BMS de 2S para ganar una eficiencia
-que el convertidor ya proporciona.
+**Por qué AA Ni-MH.** Es una decisión del equipo (octubre de 2026) que sustituye
+a las 18650: pilas comunes, cargador sencillo, sin elevador ni placa de
+protección por nodo, y una química que soporta mejor el calor y el abuso que el
+Li-ion. El precio es la energía: unos 10,6 Wh frente a los 18,9 del paquete de
+dos 18650, y por eso la autonomía de las cámaras baja a unas 11 horas (§3.2).
 
-**Por qué dos celdas y no una.** Con una sola celda, un nodo de cámara da unas
-8,5 horas estimadas. Una jornada de cosecha puede pasar de diez, y ese margen se
-lo comen el envejecimiento de la celda, el calor y los reintentos de enlace.
+**`CAM04` ya no es una excepción.** El LED de la tolva tiene su propia batería
+de 9 V (§3.6), así que su nodo lleva el mismo portapilas que los demás.
 
 ### 3.2 Autonomía estimada
 
@@ -144,9 +185,13 @@ lugar de creerse un número:
 
 | Rol | Consumo a 3,3 V | Ahorro Wi-Fi | Potencia en batería | **Autonomía estimada** |
 |---|---:|---|---:|---:|
-| Cámara | 200 mA | No | 1,11 W | **≈ 17 h** |
-| Nodo Hall | 140 mA → 77 mA | **Sí** | 0,43 W | **≈ 44 h** |
-| Nodo ultrasónico | 145 mA → 79 mA | **Sí** | 0,44 W | **≈ 43 h** |
+| Cámara | 200 mA | No | 0,96 W | **≈ 11 h** |
+| Cámara de tolva | 200 mA | No | 0,96 W | **≈ 11 h**; el LED gasta de su propia batería de 9 V (§3.6) |
+| Nodo Hall | 140 mA → 77 mA | **Sí** | 0,37 W | **≈ 29 h** |
+| Nodo ultrasónico | 145 mA → 79 mA | **Sí** | 0,38 W | **≈ 28 h** |
+
+**Once horas es justo para una jornada larga.** Si la cosecha pasa de diez
+horas, hay que cambiar las pilas de las cámaras a mitad de jornada.
 
 > **Son estimaciones, no medidas.** Hay que confirmarlas con un multímetro en
 > serie sobre un nodo real antes de dar la autonomía por buena. El script
@@ -178,10 +223,11 @@ central.
 Esto merece una advertencia explícita, porque combina mal con el resto del
 montaje:
 
-> **Las celdas de Li-ion no deben ir en una caja sellada y oscura expuesta al
-> sol.** Una caja así en un arrozal colombiano pasa con facilidad de 60 °C
-> internos, y por encima de esa temperatura una celda de Li-ion se degrada
-> rápido y deja de ser segura.
+> **Ninguna batería debe ir en una caja sellada y oscura expuesta al sol.** Una
+> caja así en un arrozal colombiano pasa con facilidad de 60 °C internos. Las
+> Ni-MH de los nodos pierden capacidad y vida rápidamente a esa temperatura, y
+> la batería de 9 V del LED y la LiFePO4 de cabina tampoco deben cargarse en
+> caliente.
 
 Medidas concretas:
 
@@ -189,33 +235,101 @@ Medidas concretas:
 |---|---|
 | Ubicación | A la sombra siempre que sea posible; nunca en el punto más soleado |
 | Caja | Color claro, y ventilada donde el ambiente lo permita |
-| Carga | **Nunca dentro de la máquina.** Cargar Li-ion por encima de 45 °C no es seguro |
-| Celdas | Protegidas, o con placa de protección 1S. La descarga profunda arruina la celda |
-| Montaje | Portapilas, **no soldar directamente a la celda** sin soldadura por puntos |
-| Fusible | Rearmable, en serie con el paquete |
+| Carga | **Nunca dentro de la máquina**, y nunca en caliente |
+| Pilas | Sin placa de protección: hay que respetar el aviso de batería del HMI y no descargarlas por debajo de 1,0 V por pila |
+| Montaje | Portapilas de 4 AA con fusible e interruptor, **nunca pilas soldadas** |
+| Fusible | 1 A en serie con cada portapilas |
 | Inspección | Revisar las celdas al cambiarlas: hinchazón, corrosión o calor anómalo |
+| Sonda del ultrasónico | El RCWL-1655 no tiene hoja de datos oficial: su rango de temperatura está sin confirmar. A la sombra, igual que las pilas |
 
 ### 3.5 La central
 
 | Elemento | Especificación |
 |---|---|
-| Fuente | Convertidor DC-DC 12 V → 5 V, **6 A mínimo**, de calidad |
-| Consumo típico | ≈ 9–12 W al 70 % de CPU con NVMe y Ethernet *(estimado)* |
+| Fuente | **Batería LiFePO4 de 12,8 V y 12 Ah** (≈ 150 Wh) con BMS, compartida con `AP01` |
+| Conversión | Convertidor 12 V → 5 V con salida USB-C de **5 A** para la Pi; un segundo convertidor 12 V → 9 V para el router Tenda N301 |
+| Consumo típico | ≈ 9–12 W al 70 % de CPU con NVMe y Ethernet *(estimado)*; menos en fase de dataset, que no infiere |
+| Autonomía estimada | ≈ 12 h con la Pi y el AP en fase de dataset; menos en fase de inferencia |
 | Reserva local | 1000 µF electrolíticos más cerámicos junto a la Pi |
-| Protección | Fusible propio, independiente del resto |
-| Apagado | Señal de contacto de la máquina a un GPIO, por optoacoplador |
+| Protección | Fusible general junto a la batería, y uno por rama (Pi y router) |
+| Apagado | **Manual**, antes de desconectar la batería |
 
-**Por qué 6 A para algo que consume 12 W.** Raspberry Pi recomienda 5 V / 5 A
-para la Pi 5, no porque consuma 25 W de forma continua, sino porque el sistema
-de gestión de energía necesita margen para los picos y **reacciona mal a la
-caída de tensión**. Un convertidor genérico de 3 A con cable fino produce
-reinicios por subtensión, que es el fallo más común y más difícil de
-diagnosticar en despliegues de este tipo.
+**Por qué una LiFePO4 de 12 V y no el paquete 3S5P de la versión 1.1.** Es una
+sola pieza de unos 150 Wh, en lugar de quince celdas que cargar una a una;
+tolera mejor el calor y admite miles de ciclos. Desde 12 V, la Pi y el router
+toman en conjunto del orden de 1 A. Su BMS corta en seco cuando la batería se
+agota, y eso equivale a desenchufar la Pi: hay que apagar antes.
 
-**El apagado ordenado es el fallo nuevo que introduce usar una Pi.** Un ESP32 se
-desconecta en caliente casi impunemente; una Raspberry Pi no. Al girar la llave,
-la señal de contacto dispara el cierre de la base, la consolidación del disco y
-el apagado limpio.
+**Por qué 5 A, y por qué no una powerbank.** Raspberry Pi especifica 5 V / 5 A
+para la Pi 5 mediante un perfil de carga propio, no porque consuma 25 W de forma
+continua, sino porque el sistema de gestión de energía necesita margen para los
+picos y **reacciona mal a la caída de tensión**. La mayoría de powerbanks
+entregan como mucho 5 V / 3 A: es la misma situación que un convertidor genérico
+de 3 A con cable fino, que produce reinicios por subtensión, el fallo más común
+y más difícil de diagnosticar en despliegues de este tipo.
+
+**El convertidor no habla USB-PD.** Sin negociación PD, la Pi 5 avisa al
+arrancar y limita los USB a 600 mA. Con `usb_max_current_enable=1` en
+`config.txt` acepta la fuente de 5 A. Hay que medir que el convertidor no pase
+de 5,1 V y vigilar los avisos de subtensión.
+
+**Cómo se carga.** Fuera de la máquina, con un cargador LiFePO4 de 14,6 V; con
+2 A, una noche.
+
+**El apagado sigue siendo el fallo nuevo que introduce usar una Pi.** Un ESP32
+se desconecta en caliente casi impunemente; una Raspberry Pi no. Hay que parar
+el servicio y esperar a que la Pi se apague **antes** de desconectar o cambiar
+la batería. **Los nodos no llevan microSD:** mientras la central está apagada,
+los frames que capturan se pierden (el LED del nodo lo indica en ámbar). Por eso
+el cambio de batería se hace con la máquina parada, entre tolvadas, nunca en
+medio de una pasada.
+
+### 3.6 La iluminación de la tolva
+
+La tolva va cubierta, así que dentro está oscuro: el LED no compite con el sol y
+solo tiene que alumbrar un recinto cerrado. Eso abarata la iluminación.
+
+| Elemento | Especificación |
+|---|---|
+| Fuente de luz | Módulo de inyección de 12 V con 3 LED (cable rojo +, blanco −). Potencia probable de 1 a 1,5 W, **sin confirmar** |
+| Alimentación | **Batería recargable de 9 V (PP3, 250 mAh) propia**, sin driver ni elevador. No toca el portapilas del nodo |
+| Encendido | **Pulsado**, solo alrededor de cada foto: MOSFET IRLZ44N en lado bajo, puerta en G14 por 200 Ω y 100 kΩ a GND, fusible de 1 A |
+| Firmware | **Pendiente:** `camara.ino` todavía no maneja el LED |
+| Ventana | 150–300 ms por foto, que llegará en el plan como cualquier otro parámetro |
+| Montaje | Separado de la cámara, alumbrando en oblicuo |
+
+**Por qué pulsado.** `CAM04` toma una foto cada dos segundos. Una PP3 de 250 mAh
+con el LED siempre encendido duraría poco más de una hora; encendido solo
+durante la foto, el consumo baja unas diez veces.
+
+**El límite de los 9 V.** Un módulo de 12 V alimentado a 9 V da bastante menos
+luz, y el brillo baja a medida que se descarga la batería. La autonomía real y
+la exposición hay que medirlas en el banco. Si no alcanza, el mismo cableado
+admite una batería de 12 V.
+
+**Por qué en oblicuo y separado de la cámara.** Dentro de una tolva cerrada hay
+mucho polvo. Un LED junto al objetivo devuelve luz dispersa —el efecto de los
+faros en la niebla— y refleja brillos en el grano. La luz lateral, además,
+realza la textura, que es lo que distingue el grano de la paja y la cascarilla.
+
+**Cuidado con la sincronía.** El driver de cámara guarda cuadros en memoria: si
+se enciende el LED y se captura de inmediato, la foto puede ser de antes del
+encendido. El orden es encender, descartar uno o dos cuadros, capturar y apagar.
+Hay que comprobar en el banco que **todas** las fotos guardadas salen
+iluminadas.
+
+**Lo que el LED no arregla.** La superficie sube al llenarse la tolva y se
+acerca al LED: entre metro y medio y medio metro, la iluminación se multiplica
+por nueve. Con exposición manual fija, las fotos del final de la tolvada saldrán
+más claras que las del principio. Es la misma razón por la que el análisis debe
+acotarse según el nivel de llenado, ahora por dos motivos: resolución y brillo.
+La referencia de color sirve además para notar cuándo el polvo acumulado sobre
+el LED está quitando luz.
+
+**La batería va fuera de la tolva.** Dentro solo la cámara y el LED. Dentro hay
+polvo de grano, que es combustible, y grano que puede golpear o enterrar la
+caja. Y conviene mirar dónde queda el motor en la máquina: en muchas
+cosechadoras está detrás o debajo de la tolva.
 
 ---
 
@@ -238,8 +352,10 @@ entre ambos es cable, no radio.
 | Elemento | Requisitos de montaje |
 |---|---|
 | Caja de `RPI01` | Rejillas con filtro de polvo, ventilador, montaje antivibración, acceso a conectores |
-| Caja de `AP01` | Estanca, antena orientada hacia los nodos, lo más alta posible, lejos de masas metálicas |
+| Caja de `AP01` | Estanca, antena orientada hacia los nodos, lo más alta posible, lejos de masas metálicas. Es un router Tenda N301 a 9 V; su alimentación baja de la batería de cabina, junto al cable Ethernet |
+| Batería de la central | LiFePO4 en cabina, a la sombra, sujeta y accesible para cambiarla sin herramientas |
 | Cajas de cámara | Visor transparente limpiable, **sujeción mecánica del conector FPC**, orientación fijada y documentada |
+| LED de la tolva y su batería | El LED dentro, separado de la cámara y en oblicuo; **la batería de 9 V, fuera de la tolva** (§3.6) |
 | Cajas de sensor | Estancas, con prensaestopas y alivio de tensión |
 | Todas | Color claro, a la sombra cuando se pueda (ver 3.4), **etiquetadas antes de montar** |
 
@@ -251,7 +367,7 @@ entre ambos es cable, no radio.
 |---|---|---|
 | SSID | `RiceVi-M01` | Uno por máquina |
 | Seguridad | WPA2-PSK | WPA3 puro puede no negociar con el ESP32 |
-| **Banda** | **Solo 2,4 GHz** | El ESP32-S3 **no tiene radio de 5 GHz**. En «automático» el nodo no ve la red, y el síntoma es idéntico al de una placa averiada |
+| **Banda** | **Solo 2,4 GHz** | Ni el ESP32-S3 ni el ESP32-C6 **tienen radio de 5 GHz**. En «automático» el nodo no ve la red, y el síntoma es idéntico al de una placa averiada |
 | **Canal** | **Fijo: 1, 6 u 11** | Un canal automático puede cambiar en marcha y desconectar a los ocho a la vez |
 | Ancho | 20 MHz | 40 MHz en 2,4 GHz añade interferencia sin beneficio |
 | **Aislamiento de clientes** | **DESACTIVADO** | Si está activo, los nodos ven Internet pero **no ven a la Pi**. Es el fallo número uno y no da ningún mensaje de error |
@@ -353,6 +469,12 @@ capturar, el dataset queda partido en dos mitades que no se pueden comparar.
 **Por qué `boot_id`.** Sin él, el frame 36 de hoy y el 36 de después de un
 reinicio serían el mismo identificador, y uno pisaría al otro.
 
+**`session_id` no sirve para agrupar el dataset.** Si la central se reinicia a
+mitad de jornada —al cambiar el paquete de baterías, por ejemplo— abre una
+sesión nueva, y esa jornada quedaría partida en dos. Por eso la división en
+entrenamiento, validación y prueba se agrupa por **fecha de la jornada** y no
+por sesión (manual de campo, §5).
+
 **Por qué `sensor_id` no es el `node_id`.** Si la placa `NU01` se avería y se
 sustituye, el sensor montado sigue siendo `US01`. La calibración, el
 `offset_b_mm` y el histórico pertenecen al sensor, no a la placa que lo lee.
@@ -367,13 +489,22 @@ Cada nodo publica **lo que mide y lo que deriva, por separado**:
 | `HALL01` | `reel_rpm` | rpm | **Sí** | `60·N / (P·Δt)` |
 | `HALL02` | `pulsos_ventana` | count | No | Conteo directo |
 | `HALL02` | `wheel_speed` | m/s | **Sí** | `N·C / (P·Δt)` |
-| `US01` `US02` | `distance` | mm | No | Trama del A02YYUW, validada |
+| `US01` `US02` | `distance` | mm | No | Duración del eco del RCWL-1655 × velocidad del sonido / 2 |
 | `US01` `US02` | `header_height` | mm | **Sí** | `distance − offset_b_mm` |
 
 **Por qué se guarda también la cruda.** Si dentro de tres meses se corrige la
 circunferencia efectiva de la rueda, con los pulsos guardados la velocidad de
 toda la campaña se recalcula. Sin ellos, hay que repetir la campaña. Los pulsos
 son el dato; las RPM son una interpretación del dato.
+
+**`wheel_speed` es una estimación, y hay que decirlo así.** La rueda patina, se
+hunde y deforma el neumático, y esos efectos cambian a lo largo de la jornada
+—con la humedad del suelo, los giros y el peso, que aumenta con cada tolvada—.
+Medir la circunferencia efectiva en campo y con carga corrige el valor medio,
+pero no la variación. No se instala GNSS, así que no hay una referencia
+independiente con la que contrastarla: la velocidad, y con ella el *reel index*,
+se publican como magnitudes estimadas y se analizan por tramos, no por valores
+puntuales.
 
 El *reel index* no lo calcula ningún nodo: `NH01` tiene las RPM y `NH02` la
 velocidad, cada uno en una placa distinta. Lo calcula la central emparejando las
@@ -392,8 +523,8 @@ Cada muestra lleva dos campos que hacen cosas distintas:
 |---|---|---|
 | `ok` | buena | Lectura normal dentro de rango |
 | `fuera_rango` | inválida | Fuera del rango físico declarado |
-| `checksum` | inválida | La trama UART no superó la verificación |
-| `timeout` | inválida | No llegó trama dentro del plazo |
+| `checksum` | inválida | Solo para un sensor de trama serie (el A02YYUW de la versión 1.1); el RCWL-1655 no lo produce |
+| `timeout` | inválida | No llegó eco dentro del plazo (`timeout_eco_us`) |
 | `sin_pulsos` | dudosa | Ventana sin pulsos: parada real o sensor caído |
 | `eco_dudoso` | dudosa | Distancia plausible pero inestable |
 | `sin_calibrar` | inválida | Falta la constante para derivar la magnitud |
@@ -584,9 +715,17 @@ píxeles, lo natural es la semántica. Un modelo de instancias produce objetos
 individuales que luego habría que unir para no contar píxeles dos veces, y paga
 un coste por información que el indicador no usa.
 
-**NCNN y no PyTorch.** Medido sobre Raspberry Pi 5 con YOLO11n a 640 × 640:
-NCNN 93,9 ms, ONNX 181,8 ms, TensorFlow Lite 324,2 ms, PyTorch 524,8 ms. Más de
-cinco veces de diferencia, sin coste.
+**NCNN y no PyTorch.** Sobre Raspberry Pi 5 con YOLO11n a 640 × 640: NCNN
+93,9 ms, ONNX 181,8 ms, TensorFlow Lite 324,2 ms, PyTorch 524,8 ms. Más de cinco
+veces de diferencia, sin coste. Las cifras proceden de la guía de Raspberry Pi
+de Ultralytics y hay que citarlas con su fecha de consulta, porque la tabla
+cambia con cada versión. Son además de **detección**: la clasificación de acame
+y las dos segmentaciones tendrán su propio coste, que habrá que medir en la Pi
+real (§10).
+
+La trilla no está en esta tabla porque queda fuera del alcance actual. Si más
+adelante se entrena, saldría de las mismas fotos de `CAM04` con una clase de
+grano partido, sin cámara nueva.
 
 ### 7.3 El presupuesto de CPU, y el lazo térmico
 
@@ -646,8 +785,10 @@ comparables y no lo son.
 
 ## 9 · Lista de materiales
 
-Precios de referencia en dólares, **estimaciones para dimensionar**, sin
-aranceles ni IVA.
+Precios de referencia en dólares de septiembre de 2026, **estimaciones para
+dimensionar**, sin aranceles ni IVA. Los ítems que cambiaron en octubre llevan
+el precio en pesos de la cotización del equipo cuando se conoce; los que no, se
+marcan *por confirmar*. **El total hay que recalcularlo** con la cotización.
 
 ### 9.1 La central
 
@@ -655,51 +796,52 @@ aranceles ni IVA.
 |---:|---|---:|
 | 1 | Raspberry Pi 5, 8 GB | US$ 80 |
 | 1 | Disipador con ventilador activo | US$ 5 |
-| 1 | M.2 HAT+ para NVMe | US$ 15 |
-| 1 | SSD NVMe 512 GB | US$ 45 |
-| 1 | Batería de RTC | US$ 5 |
-| 1 | microSD de emergencia con el sistema | US$ 8 |
+| 1 | HAT M.2 para NVMe (GeekPi N04) | US$ 15 |
+| 1 | SSD NVMe 128 GB | *por confirmar* |
+| 1 | Portapilas y pila CR2032 para el RTC | US$ 5 |
+| 1 | microSD de 64 GB con el sistema, como copia de rescate | US$ 8 |
 | 1 | Caja ventilada con filtro y antivibración | US$ 25 |
-| | **Subtotal** | **US$ 183** |
 
 ### 9.2 Nodos, sensores y baterías
 
 | Cant. | Ítem | Ref. |
 |---:|---|---:|
-| 2 paq. | 3 × ESP32-S3-CAM con OV3660 | US$ 70 |
-| 2 paq. | 3 × ESP32-S3 N16R8 | US$ 38 |
+| 4 | GOOUUU ESP32-S3-CAM V1.5 (N16R8) con OV3660 | US$ 70 (dos paquetes de 3) |
+| 4 | ESP32-C6 DevKitC | *por confirmar* |
 | — | Envío a Colombia | US$ 20 |
-| 2 | Ultrasónico A02YYUW | US$ 48 |
-| 2 | Sensor Hall + imanes | US$ 22 |
-| **32** | **Celda 18650 3000 mAh protegida** | **US$ 160** |
-| **16** | **Portapilas 2×18650 + protección 1S** | **US$ 48** |
-| **8** | **Elevador a 5 V** | **US$ 24** |
-| 1 | Cargador de bahía para 18650 | US$ 25 |
-| 5 | microSD 32 GB | US$ 40 |
+| 2 | Ultrasónico RCWL-1655 | *por confirmar* |
+| 2 | Módulo Hall HW-477 (A3144) + imanes | US$ 22 |
+| 8 | Kit de 4 pilas AA Ni-MH + cargador | *por confirmar* |
+| 8 | Portapilas de 4 AA + fusible de 1 A + interruptor | *por confirmar* |
+| — | Diodos 1N5819, resistencias de 10 kΩ, 150 kΩ y 100 kΩ, condensadores de 100 nF | *por confirmar* |
 | 8 | Caja IP65 con prensaestopas | US$ 56 |
-| 1 | Iluminación LED de tolva + referencia de color | US$ 20 |
+| 1 | Módulo LED de inyección de 12 V + referencia de color | US$ 20 |
+| 1 | MOSFET IRLZ44N, resistencias de 200 Ω y 100 kΩ, fusible de 1 A | US$ 10 |
+| 1 | Batería recargable de 9 V (PP3, 250 mAh) + cargador | *por confirmar* |
 | — | Cable, conectores y herrajes | US$ 60 |
-| | **Subtotal** | **US$ 631** |
 
-**32 celdas y no 16**: dos juegos completos de paquetes, uno montado y otro
-cargando. Es lo que permite trabajar dos jornadas seguidas sin esperar cargas.
+**Un juego de pilas por nodo.** Con 32 pilas no hay recambio cargado: un segundo
+juego, para trabajar dos jornadas seguidas sin esperar cargas, serían otras 32.
 
 ### 9.3 Red y energía
 
 | Cant. | Ítem | Ref. |
 |---:|---|---:|
-| 1 | Punto de acceso 2,4 GHz | US$ 35 |
+| 1 | Router Tenda N301 (2,4 GHz, 9 V) | COP 41.000 |
 | 1 | Caja estanca para el AP | US$ 15 |
-| 1 | Cable Ethernet apantallado | US$ 12 |
-| 1 | DC-DC 12 V → 5 V, 6 A, para la Pi | US$ 18 |
-| 1 | Optoacoplador y componentes de contacto | US$ 5 |
-| 1 | Capacitancia, fusibles y protección | US$ 30 |
-| | **Subtotal** | **US$ 115** |
-
-| | **Total estimado de hardware** | **≈ US$ 930** |
-|---|---|---:|
+| 1 | Cable Ethernet apantallado, con par de alimentación | US$ 12 |
+| 1 | Batería LiFePO4 12,8 V 12 Ah con BMS | COP 212.518 |
+| 1 | Cargador LiFePO4 14,6 V, 2 A | COP 52.271 |
+| 1 | Convertidor 12 V → 5 V USB-C 5 A, para la Pi | COP 29.388 |
+| 1 | Convertidor 12 V → 9 V 5 A con conector 5521, para el router | COP 39.195 |
+| 1 | Portafusibles con fusibles de 3 a 15 A | *por confirmar* |
+| 1 | Capacitancia y protección | US$ 30 |
 
 Sin servicio de nube recurrente: la inferencia es local.
+
+**Por qué una batería de 12 Ah.** Con la Pi y el router en fase de dataset el
+sistema de cabina gasta del orden de 11 W en batería; unos 150 Wh dan unas doce
+horas. La de 7 Ah se descartó porque no llegaba a una jornada.
 
 ---
 
@@ -717,16 +859,27 @@ que estén medidas y anotadas, `reel_rpm`, `wheel_speed`, `header_height` y
 | `offset_b_mm` de `US01` | De la cara del sensor al plano de la cuchilla |
 | `offset_b_mm` de `US02` | Igual, lado derecho. **No asumir que es el mismo número** |
 
-Y tres medidas de ingeniería que el documento da por estimadas:
+Y una comprobación que no es una constante sino una duda de fondo:
+
+| Comprobación | Cómo se hace |
+|---|---|
+| **Que los ultrasónicos midan hasta el suelo y no hasta el rastrojo** | Prueba con cinta descrita en el manual de campo, §7.1. Un eco devuelto por las puntas del rastrojo da una altura plausible, estable y en rango, que el sistema marcaría como `buena`. **Hasta que la prueba la valide, `header_height` no se publica** |
+
+Y ocho medidas de ingeniería que el documento da por estimadas:
 
 | Medida | Cómo se comprueba |
 |---|---|
 | Consumo real de cada tipo de nodo | Multímetro en serie, durante una hora de operación real |
 | Autonomía real del paquete | Una jornada completa registrando la tensión del latido |
 | Temperatura de la Pi bajo carga | Ocho horas al 70 % de CPU en la caja definitiva |
+| **Potencia y ventana del LED de la tolva** | Banco, con la cámara, la distancia real y la exposición manual: la foto debe salir bien expuesta y **todas** las guardadas, iluminadas |
+| **Consumo real de la Pi y autonomía de la batería de cabina** | Una jornada completa en fase de dataset, midiendo la tensión de la batería |
+| **Capacidad real de las pilas AA** | Descarga completa de un juego: la caja dice 3600 mAh y el cálculo usa 2600 |
+| **Luz y autonomía del LED a 9 V** | Banco: exposición de la foto con la batería llena y casi vacía |
+| **Zona ciega y tensión del RCWL-1655** | Banco, con cinta: no hay hoja de datos oficial |
 
-**Hasta que esas tres estén medidas, la autonomía de 17 horas de la sección 3.2
-es un cálculo, no un hecho.**
+**Hasta que esas medidas estén hechas, las 11 horas de las cámaras (§3.2) y las
+12 de la central (§3.5) son cálculos, no hechos.**
 
 ---
 
@@ -734,13 +887,17 @@ es un cálculo, no un hecho.**
 
 | Decisión | Por qué |
 |---|---|
-| Un ESP32-S3 por sensor y por cámara | Cables cortos, fallos aislados, firmware simple |
+| Un ESP32 por sensor y por cámara (S3 en cámaras, C6 en sensores) | Cables cortos, fallos aislados, firmware simple |
+| **Nada conectado a la máquina** | No hay que intervenir el cableado de una cosechadora ajena, ni pedir permiso para hacerlo |
 | Batería propia por nodo | Un fallo eléctrico de la máquina no apaga los ocho |
-| Dos celdas 18650 en paralelo | Una sola no da margen para una jornada larga |
+| 4 AA Ni-MH directo al pin de 5 V | Pilas comunes y carga sencilla, sin elevador ni protección; a cambio, ≈ 11 h en las cámaras |
+| **LiFePO4 de 12 V para la central** | Una sola pieza de ≈ 150 Wh, tolerante al calor; desde 12 V la Pi y el router toman ≈ 1 A |
+| **LED de tolva pulsado, con batería propia de 9 V** | No toca las pilas de `CAM04`, y encenderlo solo durante la foto cuesta diez veces menos energía |
 | Ahorro de radio solo en sensores | Las cámaras pagan latencia; los sensores no, porque el instante viaja en la muestra |
 | Central en cabina, AP fuera | La Pi quiere estar fresca, la antena cerca de los nodos |
-| Router dedicado y no celular | Un hotspot de iPhone no admite nueve estaciones |
-| SSD NVMe y no microSD | 17 GB por jornada, escritos a diario |
+| Router dedicado (Tenda N301) y no celular | Un hotspot de iPhone no admite nueve estaciones |
+| SSD NVMe y no microSD | 15–17 GB por jornada, escritos a diario |
+| **Sin microSD en los nodos** | Todo va al SSD de la Pi; a cambio, si la Pi o el Wi-Fi caen, los frames de ese intervalo se pierden |
 | Sin acelerador de IA | Decisión de proyecto; la CPU basta con ritmos escalonados |
 | Segmentación semántica | Es lo que corresponde a un porcentaje de píxeles |
 | NCNN | Cinco veces más rápido que PyTorch en esta máquina |

@@ -4,6 +4,11 @@ Referencia de todos los ajustes del sistema: qué se configura, dónde vive cada
 valor y qué pasa si se cambia. El **porqué** de cada decisión está en el
 capítulo 1; el **procedimiento** de una jornada, en el capítulo 3.
 
+*Versión 1.2 — 22 de octubre de 2026. Los nodos de sensor pasan a ESP32-C6
+DevKitC con ultrasónico RCWL-1655; los nodos se alimentan con 4 pilas AA Ni-MH y
+no llevan microSD; la central usa una batería LiFePO4 de 12 V y el punto de
+acceso es un router Tenda N301.*
+
 ---
 
 ## 1 · Dónde vive cada cosa
@@ -44,6 +49,10 @@ cabezal de una cosechadora. Ocho veces.
 | 802.11k / v / r | Desactivado | Itinerancia que un ESP32 no necesita |
 | Portal cautivo | Ninguno | Un ESP32 no puede aceptar términos en una página |
 | Ahorro de energía del AP | Desactivado | Retrasa las tramas donde está el cuello de botella |
+
+**Con el Tenda N301:** solo acepta reservas DHCP **dentro** del rango de su
+servidor DHCP. El rango va de `.2` a `.99`, y las reservas se crean en cuanto se
+conoce cada MAC (detalle en `config/red/router.md`).
 
 ### 2.2 Direccionamiento
 
@@ -98,7 +107,7 @@ Se ajustan en la unidad del servicio, sin editar código:
 | `RICEVI_VIGENCIA_MS` | `4000` | Edad máxima de un frame para que merezca inferirse |
 | `RICEVI_TURNOS` | `1` | Subidas simultáneas permitidas |
 | `RICEVI_RESERVA_MB` | `8192` | Por debajo, deja de aceptar frames |
-| `RICEVI_GPIO_CONTACTO` | *(vacío)* | GPIO de la señal de llave, para el apagado ordenado |
+| `RICEVI_GPIO_CONTACTO` | *(vacío)* | **Sin uso.** La central ya no se conecta a la máquina: lleva batería propia y el apagado es manual (capítulo 1, §3.5) |
 
 Para pasar a inferencia:
 
@@ -150,16 +159,29 @@ indistinguibles.
 
 ### 4.3 Ajustes de compilación
 
+Cámaras (GOOUUU ESP32-S3-CAM):
+
 ```
 Placa               ESP32S3 Dev Module
 PSRAM               OPI PSRAM          <- imprescindible en las cámaras
 Flash Size          16MB (128Mb)
 Partition Scheme    16M Flash (3MB APP/9.9MB FATFS)
-USB CDC On Boot     Enabled
+USB CDC On Boot     Disabled           <- programando por el USB-C "TTL" (CH340C)
 ```
 
 **Sin `OPI PSRAM` la cámara no arranca**, y el error no menciona la PSRAM por
 ninguna parte.
+
+Nodos de sensor (ESP32-C6 DevKitC):
+
+```
+Placa               ESP32C6 Dev Module
+Partition Scheme    Huge APP           <- con la de por defecto ocupan el 92-93 %
+```
+
+Los pines de la C6 los elige el propio código con `CONFIG_IDF_TARGET_ESP32C6`:
+Hall en GPIO10; ultrasónico con Trig en GPIO11 y Echo en GPIO10; batería en
+GPIO1; LED de estado en GPIO8.
 
 ### 4.4 El plan que recibe cada nodo
 
@@ -176,6 +198,13 @@ Dentro de la tolva, si el control automático ajusta la imagen entre frames, el
 porcentaje segmentado cambia por razones que no tienen que ver con el material y
 las tolvadas dejan de ser comparables.
 
+`CAM04` recibirá además, en el mismo plan, la **ventana de encendido del LED**:
+150–300 ms alrededor de cada foto. **Pendiente:** `camara.ino` todavía no maneja
+el LED. El nodo enciende el LED, descarta uno o dos
+cuadros, captura y apaga. Esos milisegundos son el único ajuste del LED que
+existe, y como todo lo demás llega en el plan, cambiarlos es editar un archivo y
+reiniciar la central, no abrir la tolva.
+
 ### 4.5 Código de colores del LED
 
 Es el único diagnóstico con el nodo dentro de una caja cerrada. Conviene pegar
@@ -189,7 +218,8 @@ esta tabla en la cabina:
 | Verde parpadeando | Registrado y operando |
 | Verde doble | Subiendo un frame |
 | Azul | Sincronizando reloj |
-| Morado | Pendientes en la microSD por reenviar |
+| Ámbar tras una captura | No se pudo subir el frame y, sin microSD, se perdió |
+| Morado | Pendientes en la microSD por reenviar (solo si se activa `RICEVI_SD_HABILITADA`; hoy los nodos no llevan microSD) |
 | Naranja | Batería por debajo del umbral de aviso |
 
 ---
@@ -198,24 +228,32 @@ esta tabla en la cabina:
 
 | Parámetro | Valor |
 |---|---|
-| Configuración | 2 × 18650 en paralelo, 1S |
-| Capacidad | 6000 mAh · 3,7 V ≈ 22,2 Wh |
-| Corte por protección | 3,0 V |
-| Aviso (firmware) | 3,40 V |
-| Crítico (firmware) | 3,15 V |
-| Medida | Divisor 2:1 al ADC del nodo |
+| Configuración de los nodos | 4 × AA Ni-MH **en serie** (4S), directo al pin de 5 V, con fusible de 1 A e interruptor |
+| `CAM04` | Igual que los demás. El LED de la tolva lleva su propia batería de 9 V (capítulo 1, §3.6) |
+| Central | **Batería LiFePO4 de 12,8 V y 12 Ah**, compartida con `AP01` (capítulo 1, §3.5) |
+| Capacidad | 2600 mAh · 4,8 V ≈ 12,5 Wh (la caja dice 3600 mAh: **a medir**) |
+| Descarga completa | 4,0 V (1,0 V por pila) |
+| Aviso (firmware) | 4,50 V |
+| Crítico (firmware) | 4,35 V |
+| Medida | Divisor 150 kΩ / 100 kΩ (factor 2,5) al GPIO1. **Aún sin montar**: hasta entonces la batería llega nula |
 | Reporte | En el latido, cada 10 s |
 
 Al llegar al umbral **crítico**, un nodo de cámara **deja de capturar
 ordenadamente** en vez de morirse a mitad de una subida y dejar un archivo a
 medias.
 
-**No se carga en la máquina.** Dos juegos de paquetes: uno montado, otro en el
-cargador de bahía. Cargar Li-ion por encima de 45 °C no es seguro, y una caja en
-un arrozal pasa de eso con facilidad.
+**No se carga en la máquina.** Las pilas se cargan fuera, con su cargador, y
+nunca en caliente. Hoy hay un juego por nodo; con un segundo juego se podrían
+trabajar dos jornadas seguidas sin esperar cargas.
 
-El HMI muestra la tensión de los ocho paquetes, y `verificar_campo.py` se niega
-a dar el visto bueno si alguno sale por debajo del umbral de aviso.
+La batería de la central se carga con su cargador LiFePO4 de 14,6 V: con 2 A,
+una noche.
+
+El HMI muestra la tensión de los ocho nodos, y `verificar_campo.py` se niega a
+dar el visto bueno si alguno sale por debajo del umbral de aviso. **Mientras el
+divisor no esté montado la tensión llega nula**, así que las pilas se comprueban
+con el multímetro antes de salir. La batería de la central no tiene medida
+propia: se comprueba antes de salir y se cambia con la central apagada.
 
 ---
 

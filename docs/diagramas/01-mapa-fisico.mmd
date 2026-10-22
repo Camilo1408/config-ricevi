@@ -1,17 +1,19 @@
-flowchart LR
+flowchart TB
   subgraph CABEZAL["Cabezal de corte"]
-    C1["CAM01 frontal"]
-    C2["CAM02 post. izq."]
-    C3["CAM03 post. der."]
-    NU1["NU01 altura izq."]
-    NU2["NU02 altura der."]
-    NH1["NH01 molinete"]
+    direction LR
+    C1["CAM01<br/>frontal"]
+    C2["CAM02<br/>post. izq."]
+    C3["CAM03<br/>post. der."]
+    NU1["NU01<br/>altura izq."]
+    NU2["NU02<br/>altura der."]
+    NH1["NH01<br/>molinete"]
   end
   subgraph MAQ["Tolva y chasis"]
-    C4["CAM04 superficie<br/>+ iluminación LED"]
-    NH2["NH02 rueda"]
+    direction LR
+    C4["CAM04 superficie<br/>+ LED con batería de 9 V"]
+    NH2["NH02<br/>rueda"]
   end
-  CABEZAL -.->|"Wi-Fi"| AP["AP01<br/>punto de acceso<br/>2,4 GHz, a la sombra"]
+  CABEZAL -.->|"Wi-Fi"| AP["AP01 · Tenda N301<br/>2,4 GHz · 9 V · a la sombra"]
   MAQ -.->|"Wi-Fi"| AP
   HMI["HMI01<br/>tablet en cabina"] -.->|"Wi-Fi"| AP
-  AP ===|"Ethernet"| RPI["RPI01 · cabina<br/>Raspberry Pi 5 8 GB<br/>SSD NVMe 512 GB<br/>alimentada de la máquina"]
+  AP ===|"Ethernet"| RPI["RPI01 · cabina<br/>Raspberry Pi 5 8 GB · SSD NVMe 128 GB<br/>batería LiFePO4 12 V, compartida con AP01"]

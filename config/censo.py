@@ -139,13 +139,13 @@ MAGNITUDES: dict[str, list[dict]] = {
 #
 # `calidad` decide si el dato se usa. `codigo_calidad` dice POR QUE, y es lo que
 # permite diagnosticar: una tasa de invalidas del 20 % no se puede arreglar sin
-# saber si es `checksum` (cableado, ruido) o `fuera_rango` (geometria, terreno).
+# saber si es `timeout` (cableado, sin eco) o `fuera_rango` (geometria, terreno).
 
 CODIGOS_CALIDAD: dict[str, tuple[str, str]] = {
     "ok":           ("buena",    "Lectura normal dentro de rango"),
     "fuera_rango":  ("invalida", "El valor cae fuera del rango fisico declarado"),
-    "checksum":     ("invalida", "La trama UART no supero la suma de verificacion"),
-    "timeout":      ("invalida", "No llego trama dentro del plazo"),
+    "checksum":     ("invalida", "Trama serie con suma de verificacion invalida (sensor UART; el RCWL-1655 no lo usa)"),
+    "timeout":      ("invalida", "No llego eco dentro del plazo (timeout_eco_us)"),
     "sin_pulsos":   ("dudosa",   "Ventana sin pulsos: parada real o sensor caido"),
     "eco_dudoso":   ("dudosa",   "Distancia plausible pero inestable entre lecturas"),
     "sin_calibrar": ("invalida", "Falta la constante para derivar la magnitud"),

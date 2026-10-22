@@ -17,8 +17,8 @@ Solo `Muestra`, y por tres motivos que el hardware real impone:
      magnitudes comparten unidad -- `distance` y `header_height`, las dos en
      mm -- el esquema se rompe en silencio.
   3. TIENE QUE DECIR POR QUE una lectura es mala. `invalida` no distingue un
-     checksum fallido (cableado, ruido) de un eco fuera de rango (geometria,
-     vegetacion). Son dos averias distintas con dos soluciones distintas.
+     eco que no llega (cableado, superficie) de un eco fuera de rango
+     (geometria, vegetacion). Son dos averias distintas con dos soluciones distintas.
 
 Los campos nuevos son OPCIONALES, asi que un nodo que aun hable 1.0 valida sin
 tocarlo. Eso permite actualizar el firmware de ocho nodos de uno en uno.

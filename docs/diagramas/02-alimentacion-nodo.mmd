@@ -1,9 +1,6 @@
 flowchart LR
-  B1(["18650 · 3000 mAh"]) --> H["Portapilas 2P<br/>6000 mAh · 3,7 V"]
-  B2(["18650 · 3000 mAh"]) --> H
-  H --> P["Protección 1S<br/>corte a 3,0 V"]
-  P --> F["Fusible<br/>rearmable"]
-  F --> E["Elevador a 5 V<br/>rendimiento ~90 %"]
-  E --> N["Pin 5 V del nodo<br/>regulador interno a 3,3 V"]
-  P -.->|"divisor 2:1"| A["ADC del ESP32<br/>tensión del paquete"]
+  B(["4 × AA Ni-MH en serie<br/>4,8 V · ≈ 2600 mAh"]) --> F["Fusible<br/>1 A"]
+  F --> S["Interruptor"]
+  S --> N["Pin 5 V del nodo<br/>regulador interno a 3,3 V"]
+  B -.->|"divisor 150 k / 100 k<br/>(por montar)"| A["ADC GPIO1<br/>tensión de las pilas"]
   A -.->|"viaja en el latido"| HMI(["HMI: batería por nodo"])

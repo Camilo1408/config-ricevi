@@ -4,17 +4,22 @@ Lo que hay que hacer, en orden, para capturar una jornada de dataset con el
 sistema montado en la cosechadora. Está escrito para leerse en el campo, no en
 el escritorio.
 
+*Versión 1.2 — 22 de octubre de 2026. Los nodos van con pilas AA y sin microSD,
+la central con una batería LiFePO4 de 12 V y el punto de acceso es un router
+Tenda N301. La versión 1.1 añadió la prueba de los ultrasónicos (§7.1) y la
+definición de grupo (§5).*
+
 ---
 
 ## 1 · Qué es cada cosa
 
 | Equipo | Dónde va | Qué hace |
 |---|---|---|
-| `RPI01` | **Cabina** | Recibe, verifica, guarda, infiere y sirve la pantalla |
-| `AP01` | Fuera, cerca del cabezal | El Wi-Fi. Va a la Pi por cable Ethernet |
+| `RPI01` | **Cabina** | Recibe, verifica, guarda, infiere y sirve la pantalla. Lleva su propia batería LiFePO4 de 12 V |
+| `AP01` | Fuera, cerca del cabezal | El Wi-Fi: un router Tenda N301. Va a la Pi por cable Ethernet y se alimenta a 9 V de la misma batería de cabina |
 | `CAM01` | Frente al cabezal | Cultivo antes del corte |
 | `CAM02` `CAM03` | Detrás del cabezal, izq. y der. | Resultado del corte |
-| `CAM04` | Dentro de la tolva | Superficie del material acumulado |
+| `CAM04` | Dentro de la tolva | Superficie del material acumulado. El LED lleva su propia batería de 9 V, fuera de la tolva |
 | `NH01` | Eje del molinete | Pulsos → rpm |
 | `NH02` | Rueda instrumentada | Pulsos → velocidad |
 | `NU01` `NU02` | Extremos del cabezal | Distancia al suelo → altura |
@@ -37,6 +42,8 @@ el escritorio.
 | 7 | Grabar y provisionar los ocho nodos, **de uno en uno** | LED verde parpadeando en cada uno |
 | 8 | **Pegar la etiqueta física en cada caja** | Las ocho etiquetadas |
 | 9 | Medir las cuatro constantes de `config/calibracion.json` | Ver §7 |
+| 10 | Ajustar en el banco la ventana del LED de la tolva, cuando el firmware lo maneje, con la batería de 9 V llena y casi vacía | La foto sale bien expuesta y **todas** las guardadas salen iluminadas |
+| 11 | Cargar la batería LiFePO4 de la central y las pilas de los ocho nodos | Batería llena y con fusible; cada juego de pilas por encima de 4,5 V, idealmente recién cargado (≈ 5,6 V) |
 
 **El paso 7 es de uno en uno a propósito.** Si se encienden los ocho a la vez y
 algo falla, hay ocho sospechosos. Añadiéndolos en orden, el nodo que rompe el
@@ -92,6 +99,8 @@ diagnostica, que es exactamente la verdad.
 | Temperatura en `caliente` o peor | La Pi se está estrangulando | Normal en cabina sin aire. La captura no se detiene |
 | Turnos denegados subiendo | El enlace no da abasto | Mirar la cobertura del AP |
 | Muchas muestras nulas en un sensor | El sensor, no la placa | `GET /api/sensores/salud` dice el código |
+| Huecos en los frames de una cámara | Se cortó el enlace. Sin microSD, esos frames se perdieron | Mirar la cobertura del AP y anotar el intervalo |
+| Aviso de batería en una cámara | Las pilas se acercan al límite: unas 11 h estimadas | Parar entre tolvadas y cambiar el juego |
 
 ### 3.4 Registrar lo que pasa
 
@@ -108,6 +117,18 @@ corte; varios minutos para la tolva.
 
 ```bash
 sudo systemctl stop ricevi-central
+sudo shutdown -h now
+```
+
+**Esperar a que la Pi se apague del todo antes de desconectar la batería.** Y
+lo mismo si hay que cambiarla a mitad de jornada: parar, apagar, cambiar y
+volver a arrancar. **Los nodos no llevan microSD:** mientras la central está
+apagada, los frames que capturan se pierden. Por eso el cambio se hace con la
+máquina parada, entre tolvadas, y abre una sesión nueva al volver (§5).
+
+Ya con la Pi encendida otra vez, o en el taller:
+
+```bash
 ./herramientas/respaldo_jornada.sh /media/disco-externo
 ```
 
@@ -135,6 +156,17 @@ entrenamiento, validación y prueba al azar sobre estas filas da métricas
 infladas y falsas: dos frames consecutivos de la misma pasada son casi la misma
 imagen, y si uno cae en entrenamiento y otro en prueba, el modelo ya ha visto la
 respuesta. La división va por grupo.
+
+**Un grupo es una jornada, identificada por su fecha.** No la pasada: dos
+pasadas del mismo lote, con minutos de diferencia, la misma luz y el mismo
+cultivo, siguen siendo casi la misma imagen. Y tampoco el `session_id`: si la
+central se reinicia a mitad del día —al cambiar la batería, por ejemplo— abre
+una sesión nueva y partiría la jornada entre entrenamiento y prueba.
+
+De ahí una consecuencia para planear las salidas: hacen falta **al menos dos o
+tres jornadas de captura**, porque una entera se reserva para la prueba y no
+puede aparecer en el entrenamiento. Si además son en lotes distintos, mejor: el
+examen se parece menos todavía a la práctica.
 
 ---
 
@@ -172,6 +204,40 @@ publicar**.
 Al medir una: poner el valor, poner su `__medido` en `true`, rellenar
 `medido_por` y `medido_utc`, y **subir `CENSO_VERSION`** en `config/censo.py`.
 
+### 7.1 La prueba de los ultrasónicos
+
+Medir el `offset_b_mm` responde a «¿a qué distancia está la cuchilla del
+sensor?». Queda otra pregunta, que ninguna calibración responde: **¿la distancia
+que mide el sensor en el lote llega de verdad hasta el suelo?**
+
+El sensor mide hasta lo primero en que rebota su sonido. Si el eco vuelve de las
+puntas del rastrojo —que quedan justo a la altura de la cuchilla—, la altura
+calculada sale cerca de cero; si vuelve de hojas a media altura, sale un valor
+intermedio. En los tres casos el número es estable y está en rango, así que
+entra con calidad `buena` y nadie lo nota: es exactamente el error silencioso
+que la regla del nulo quiere evitar.
+
+La prueba es media hora en la primera salida, solo con la cinta:
+
+| # | Paso |
+|---|---|
+| 1 | Máquina detenida **dentro del lote y sobre rastrojo**, no en el patio |
+| 2 | Medir con cinta la altura real de la cuchilla al suelo, justo debajo de cada sensor |
+| 3 | Anotar lo que reporta el sistema para `NU01` y `NU02` |
+| 4 | Repetir a tres o cuatro alturas distintas del cabezal |
+
+Cómo se lee el resultado:
+
+| Lo que sale | Qué significa |
+|---|---|
+| Coincide con la cinta (±2–3 cm) a todas las alturas | El sensor ve el suelo. `header_height` se puede publicar |
+| Sale cerca de cero, o apenas cambia al subir el cabezal | Está viendo el rastrojo. **No se publica** |
+| Coincide a unas alturas y a otras no | Depende de lo que haya debajo: queda como dato de contexto |
+
+Si la prueba falla no se pierde nada del dataset: la distancia cruda se sigue
+guardando, y `header_height` queda como contexto no publicable, igual que una
+constante sin medir.
+
 ---
 
 ## 8 · Las reglas que no se negocian
@@ -184,6 +250,9 @@ Al medir una: poner el valor, poner su `__medido` en `true`, rellenar
 4. **Sin modelo, la pantalla dice «sin modelo».** Nunca un número.
 5. **La identidad de un nodo es su `node_id`, no su IP.**
 6. **Nada se da por instalado hasta que un programa lo demuestra.**
+7. **Nada se conecta a la instalación eléctrica de la cosechadora.** Ni la
+   central. Todo va con batería propia.
+8. **La Pi se apaga antes de quitarle la batería.**
 
 ---
 

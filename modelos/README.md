@@ -15,9 +15,8 @@ entrenarlos.
 
 > `porcentaje` puede ser `None`, y **`None` no es cero**.
 
-En el banco de pruebas había un sustituto que calculaba el «ratio de verde».
-Como ejercicio de infraestructura fue útil. En campo es peligroso, y por una
-razón concreta: **no falla**. Devuelve un número con la forma correcta, en el
+Un sustituto que calculara, por ejemplo, el «ratio de verde» de la imagen sería
+peligroso por una razón concreta: **no falla**. Devuelve un número con la forma correcta, en el
 rango correcto, que aparece junto a la etiqueta «material útil residual» y que
 acaba en una tabla de la tesis. No se detecta mirando gráficas, porque se
 comporta como un dato.

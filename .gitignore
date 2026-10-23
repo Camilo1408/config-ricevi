@@ -19,6 +19,7 @@ modelos/pesos/*.onnx
 
 # --- entorno -------------------------------------------------------------
 .venv/
+.venv-docs/
 wheelhouse/
 __pycache__/
 *.py[cod]

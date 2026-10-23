@@ -4,8 +4,8 @@ expandir_codigo.py - Inserta el codigo fuente real dentro de los .md de docs/.
 POR QUE EXISTE
 --------------
 Los capitulos de la guia llevan el codigo completo. Si ese codigo estuviera
-copiado a mano dentro del markdown, en cuanto arreglaras un fallo en
-`referencia/` la guia quedaria mintiendo -- y no habria forma de notarlo.
+copiado a mano dentro del markdown, en cuanto arreglaras un fallo en el
+codigo la guia quedaria mintiendo -- y no habria forma de notarlo.
 
 Con marcadores, el markdown dice DONDE va cada archivo y este script pega el
 contenido real en el momento de generar el documento. La guia no puede
@@ -13,14 +13,14 @@ desincronizarse del codigo porque no tiene una copia propia.
 
 MARCADOR
 --------
-    <!--CODIGO: referencia/central/app/config.py | python-->
+    <!--CODIGO: central/app/config.py | python-->
 
 Genera `docs/generado/NN-*.md` con los marcadores sustituidos. Los originales
 de `docs/` no se tocan.
 
 USO
 ---
-    .venv\\Scripts\\python.exe herramientas\\expandir_codigo.py
+    .venv-docs\\Scripts\\python.exe herramientas\\expandir_codigo.py
 """
 
 from __future__ import annotations

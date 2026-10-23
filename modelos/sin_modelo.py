@@ -3,12 +3,11 @@ sin_modelo.py - El motor de la fase de dataset. No calcula nada, y es lo correct
 
 POR QUE ESTE ARCHIVO ES IMPORTANTE
 ----------------------------------
-En el banco de pruebas habia un sustituto que calculaba el "ratio de verde" de
-la imagen. Servia para medir la tuberia -- decodificar, recortar el ROI, contar
-pixeles, guardar el resultado -- sin tener modelos. Como ejercicio de
-infraestructura fue util.
+Un sustituto que calculara el "ratio de verde" de la imagen serviria para medir
+la tuberia -- decodificar, recortar el ROI, contar pixeles, guardar el
+resultado -- sin tener modelos.
 
-En campo es peligroso, y conviene entender exactamente por que: **no falla**.
+En campo seria peligroso, y conviene entender exactamente por que: **no falla**.
 Devuelve un numero con la forma correcta, en el rango correcto, que aparece en
 el HMI junto a la etiqueta "material util residual" y que acaba en una tabla de
 la tesis. Nadie lo detecta mirando graficas, porque se comporta como un dato.

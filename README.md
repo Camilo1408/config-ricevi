@@ -20,11 +20,6 @@ al SSD de la Pi. La central y el router se alimentan de una batería LiFePO4 de
 12 V. Nada se conecta a la cosechadora. Detalle en
 `docs/01-arquitectura-hardware.md` (versión 1.3).
 
-> **Este proyecto es independiente de `prubea-conex/`.** Aquel es el banco de
-> simulación, con hardware sustituto y sensores sintéticos, y se conserva aparte
-> para ensayar cambios sin tocar el sistema de campo. Lo que se aprendió allí está
-> incorporado aquí; lo que era un sustituto de banco, no.
-
 ## Las dos fases
 
 El sistema tiene un único código y dos modos de operación:

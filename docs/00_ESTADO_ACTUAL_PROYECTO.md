@@ -229,7 +229,6 @@ el mayor riesgo de calendario.
 | `config-ricevi-campo/docs/01–03.md` | **Arquitectura v1.3** (23-oct). `.docx`/`.pdf` en `docs/entregables/`, generados con `herramientas/generar_documentos.ps1` |
 | `config-ricevi-campo/docs/historico/` | Versiones anteriores de este archivo |
 | `PROYECTO/docs/conexiones_nodos_y_central.html`, `puesta_en_marcha.html` | Páginas de cableado y de puesta en mesa (15–21-oct). **Todavía muestran `NH02`**, ahora con un aviso arriba: el cableado de `NH01`, `NU01`/`NU02` y cámaras sigue valiendo; lo de la rueda no |
-| `prubea-conex/` | Banco de simulación; sus medidas son de portátil y móviles, no de campo |
 | `sistema-arroz-front/` | Landing informativa (Vercel), ya con GPS y siete nodos |
 | `modelos-3d/` | Soporte 3D del nodo de cámara (FreeCAD, borrador) |
 | Raíz de `PROYECTO/`: `RiceVi_arquitectura_*.md/.docx/.pdf` | Histórico (septiembre) |

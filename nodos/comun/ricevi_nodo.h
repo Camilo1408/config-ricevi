@@ -1,9 +1,8 @@
 /*
  * ricevi_nodo.h - El firmware compartido por los siete nodos.
  *
- * Es la traduccion a C++ de lo que en el banco de pruebas era `comun.py`: la
- * misma logica de registro, cuatro tiempos, turno y reintento, contra los
- * mismos endpoints y el mismo contrato.
+ * Registro, intercambio de cuatro tiempos, turno de subida y reintento, contra
+ * los endpoints y el contrato de la central (central/app/contratos.py).
  *
  * LO QUE CADA ROL APORTA POR SU CUENTA
  * ------------------------------------

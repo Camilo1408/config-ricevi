@@ -18,7 +18,7 @@ from pathlib import Path
 from . import config
 
 # Una conexion por hilo. Un sqlite3.Connection no se comparte entre hilos sin
-# cuidado, y aqui hay al menos cuatro: servidor, inferencia, fusion y salud.
+# cuidado, y aqui hay al menos cinco: servidor, inferencia, fusion, salud y GPS.
 _local = threading.local()
 
 
@@ -64,7 +64,7 @@ CREATE TABLE IF NOT EXISTS nodos (
     motivo_reinicio TEXT NOT NULL DEFAULT '',
     ultimo_visto_us INTEGER,
     registros       INTEGER NOT NULL DEFAULT 0,
-    -- Estado que llega colgado del latido. Con ocho paquetes 18650
+    -- Estado que llega colgado del latido. Con siete juegos de pilas
     -- independientes, saber cual se esta agotando es lo que evita perder una
     -- vista a mitad de jornada sin aviso previo.
     bateria_mv      INTEGER,
@@ -167,8 +167,10 @@ CREATE TABLE IF NOT EXISTS estado_maquina (
     session_us           INTEGER NOT NULL,
     reel_rpm             REAL,
     reel_rpm_edad_ms     INTEGER,
-    wheel_speed_mps      REAL,
-    wheel_speed_edad_ms  INTEGER,
+    -- Velocidad sobre el suelo del GPS (GPS01, filtrada). Hasta oct-2026 era
+    -- wheel_speed_*, estimada por el Hall de la rueda: ver _migrar().
+    ground_speed_mps     REAL,
+    ground_speed_edad_ms INTEGER,
     altura_izq_mm        REAL,
     altura_izq_edad_ms   INTEGER,
     altura_der_mm        REAL,
@@ -237,12 +239,28 @@ CREATE INDEX IF NOT EXISTS ix_eventos_tipo ON eventos(tipo, id);
 _sesion_actual = ""
 
 
+def _migrar(con: sqlite3.Connection) -> None:
+    """Pone al dia una base creada con un esquema anterior.
+
+    CREATE TABLE IF NOT EXISTS no toca una tabla que ya existe, asi que una
+    base de la mesa de pruebas, creada con wheel_speed_*, se quedaria sin las
+    columnas del GPS y la fusion fallaria al guardar. Se anaden las que faltan;
+    las viejas se quedan, nulas, porque borrar columnas en SQLite es reescribir
+    la tabla y no aporta nada.
+    """
+    cols = {f["name"] for f in con.execute("PRAGMA table_info(estado_maquina)")}
+    for col, tipo in (("ground_speed_mps", "REAL"), ("ground_speed_edad_ms", "INTEGER")):
+        if col not in cols:
+            con.execute(f"ALTER TABLE estado_maquina ADD COLUMN {col} {tipo}")
+
+
 def inicializar(session_id: str, clock_epoch_id: str, inicio_utc: str,
                 censo_version: str, modelo: str, acta_json: str) -> None:
     global _sesion_actual
     _sesion_actual = session_id
     con = conexion()
     con.executescript(ESQUEMA)
+    _migrar(con)
     # Lo volatil de cada nodo se mide en el reloj de la sesion anterior: con el
     # reloj nuevo no significa nada. Se borra y cada nodo lo repone al hablar.
     con.execute("""UPDATE nodos SET ultimo_visto_us=NULL, bateria_mv=NULL,
@@ -435,6 +453,24 @@ def ultima_muestra(sensor_id: str, magnitud: str) -> sqlite3.Row | None:
               AND calidad != 'invalida'
          ORDER BY capture_session_us DESC LIMIT 1""",
         (_sesion_actual, sensor_id, magnitud)).fetchone()
+
+
+def muestra_cercana(sensor_id: str, magnitud: str, session_us: int,
+                    tolerancia_us: int) -> sqlite3.Row | None:
+    """La muestra VALIDA de una magnitud mas cercana a un instante.
+
+    La usa la fusion para emparejar la velocidad del GPS, que llega una vez por
+    segundo, con las rpm del molinete de ese mismo instante, que llegan a 10 Hz.
+    Emparejar la ultima de cada una daria separaciones de hasta un segundo.
+    """
+    return conexion().execute(
+        """SELECT valor, capture_session_us, calibration_id, codigo_calidad
+             FROM telemetria
+            WHERE session_id=? AND sensor_id=? AND magnitud=? AND valor IS NOT NULL
+              AND calidad != 'invalida' AND capture_session_us BETWEEN ? AND ?
+         ORDER BY ABS(capture_session_us - ?) LIMIT 1""",
+        (_sesion_actual, sensor_id, magnitud, session_us - tolerancia_us,
+         session_us + tolerancia_us, session_us)).fetchone()
 
 
 def estado_maquina_cercano(session_us: int, tolerancia_us: int) -> sqlite3.Row | None:

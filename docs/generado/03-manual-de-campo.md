@@ -4,10 +4,13 @@ Lo que hay que hacer, en orden, para capturar una jornada de dataset con el
 sistema montado en la cosechadora. Está escrito para leerse en el campo, no en
 el escritorio.
 
-*Versión 1.2 — 22 de octubre de 2026. Los nodos van con pilas AA y sin microSD,
-la central con una batería LiFePO4 de 12 V y el punto de acceso es un router
-Tenda N301. La versión 1.1 añadió la prueba de los ultrasónicos (§7.1) y la
-definición de grupo (§5).*
+*Versión 1.3 — 23 de octubre de 2026. La velocidad la mide un GPS USB con la
+antena en el techo de la cabina, sin sensor en la rueda: quedan siete nodos, y se
+añaden su montaje (§2.1), su comprobación diaria (§2.2, §3.2) y su validación
+en campo (§7.2). La versión 1.2 dejó los nodos con pilas AA y sin microSD, la
+central con una batería LiFePO4 de 12 V y el punto de acceso en un router Tenda
+N301; la 1.1 añadió la prueba de los ultrasónicos (§7.1) y la definición de
+grupo (§5).*
 
 ---
 
@@ -21,8 +24,8 @@ definición de grupo (§5).*
 | `CAM02` `CAM03` | Detrás del cabezal, izq. y der. | Resultado del corte |
 | `CAM04` | Dentro de la tolva | Superficie del material acumulado. El LED lleva su propia batería de 9 V, fuera de la tolva |
 | `NH01` | Eje del molinete | Pulsos → rpm |
-| `NH02` | Rueda instrumentada | Pulsos → velocidad |
 | `NU01` `NU02` | Extremos del cabezal | Distancia al suelo → altura |
+| `GPS01` | Techo de la cabina, con cable USB a la Pi | Velocidad de avance. No es un nodo: no lleva pilas ni Wi-Fi |
 | `HMI01` | Cabina | Un navegador apuntando a `http://192.168.40.2:8000` |
 
 ---
@@ -34,20 +37,25 @@ definición de grupo (§5).*
 | # | Paso | Cómo se comprueba |
 |---|---|---|
 | 1 | Ejecutar el ejemplo de cámara del fabricante en **las cuatro** placas | Las cuatro dan imagen |
-| 2 | Anotar las ocho MAC en `config/censo.py` | `python config/censo.py` sin avisos de MAC |
+| 2 | Anotar las siete MAC en `config/censo.py` | `python config/censo.py` sin avisos de MAC |
 | 3 | Configurar el punto de acceso | Ver `config/red/router.md` |
-| 4 | Crear las diez reservas DHCP | Cada equipo recibe la IP esperada |
+| 4 | Crear las nueve reservas DHCP | Cada equipo recibe la IP esperada |
 | 5 | Generar los tokens | `python herramientas/generar_tokens.py` |
-| 6 | Instalar la central en la Pi | `herramientas/instalar_pi.sh` termina en verde |
-| 7 | Grabar y provisionar los ocho nodos, **de uno en uno** | LED verde parpadeando en cada uno |
-| 8 | **Pegar la etiqueta física en cada caja** | Las ocho etiquetadas |
+| 6 | Conectar el GPS a un USB de la Pi e instalar la central | `herramientas/instalar_pi.sh` termina en verde y en el paso 5/8 muestra el receptor |
+| 7 | Grabar y provisionar los siete nodos, **de uno en uno** | LED verde parpadeando en cada uno |
+| 8 | **Pegar la etiqueta física en cada caja** | Las siete etiquetadas |
 | 9 | Medir las cuatro constantes de `config/calibracion.json` | Ver §7 |
 | 10 | Ajustar en el banco la ventana del LED de la tolva, cuando el firmware lo maneje, con la batería de 9 V llena y casi vacía | La foto sale bien expuesta y **todas** las guardadas salen iluminadas |
-| 11 | Cargar la batería LiFePO4 de la central y las pilas de los ocho nodos | Batería llena y con fusible; cada juego de pilas por encima de 4,5 V, idealmente recién cargado (≈ 5,6 V) |
+| 11 | Cargar la batería LiFePO4 de la central y las pilas de los siete nodos | Batería llena y con fusible; cada juego de pilas por encima de 4,5 V, idealmente recién cargado (≈ 5,6 V) |
+| 12 | Montar el GPS con su imán en el techo de la cabina y bajar el cable a la Pi sujeto contra la vibración | En el HMI, la fila GPS en verde con satélites y HDOP |
 
-**El paso 7 es de uno en uno a propósito.** Si se encienden los ocho a la vez y
-algo falla, hay ocho sospechosos. Añadiéndolos en orden, el nodo que rompe el
+**El paso 7 es de uno en uno a propósito.** Si se encienden los siete a la vez y
+algo falla, hay siete sospechosos. Añadiéndolos en orden, el nodo que rompe el
 sistema es el último que se encendió.
+
+**Al provisionar desde la Pi con el GPS enchufado**, `/dev/ttyACM0` puede ser el
+GPS. Elegir el puerto de la placa en `/dev/serial/by-id/` o desconectar el GPS
+mientras tanto (capítulo 2, §4.2).
 
 ### 2.2 Cada vez, antes de arrancar el motor
 
@@ -57,6 +65,10 @@ python herramientas/verificar_campo.py
 
 Tiene que terminar sin fallos. Si hay avisos de calibración, se puede capturar
 igual: lo que no se podrá es publicar las magnitudes derivadas.
+
+**Hazlo con la máquina al aire libre.** El GPS necesita ver el cielo y, en frío,
+tarda uno o dos minutos en encontrar los satélites. Dentro del galpón la
+comprobación del GPS falla, y es lo esperado.
 
 ---
 
@@ -79,10 +91,11 @@ encenderlos en ningún orden concreto.
 | Indicador | Bien |
 |---|---|
 | Cabecera | `FASE DE DATASET — capturando, sin diagnóstico` |
-| Nodos | Ocho puntos verdes |
+| Nodos | Siete puntos verdes |
 | RTT | Por debajo de 30 ms en todos |
 | Frames | Subiendo, en las cuatro cámaras |
-| Muestras | Subiendo, en los cuatro sensores |
+| Muestras | Subiendo, en los tres sensores |
+| GPS | Satélites y HDOP en verde; la velocidad en km/h con la máquina en marcha y 0 con la máquina detenida |
 | Temperatura | Por debajo de 75 °C |
 | Disco libre | Suficiente para las horas que quedan |
 
@@ -101,6 +114,8 @@ diagnostica, que es exactamente la verdad.
 | Muchas muestras nulas en un sensor | El sensor, no la placa | `GET /api/sensores/salud` dice el código |
 | Huecos en los frames de una cámara | Se cortó el enlace. Sin microSD, esos frames se perdieron | Mirar la cobertura del AP y anotar el intervalo |
 | Aviso de batería en una cámara | Las pilas se acercan al límite: unas 11 h estimadas | Parar entre tolvadas y cambiar el juego |
+| GPS «sin señal» | El receptor no ve suficientes satélites. No hay velocidad ni *reel index*; las imágenes se siguen guardando | Normal un momento bajo árboles o junto a un galpón. Si dura, revisar que la antena siga en el techo y con cielo despejado |
+| GPS «sin receptor» | La Pi no ve el GPS | Revisar el cable USB. La central lo vuelve a buscar sola cada 5 s |
 
 ### 3.4 Registrar lo que pasa
 
@@ -191,12 +206,13 @@ deliberado: perder el diagnóstico es aceptable, perder la jornada de captura no
 
 El sistema captura dataset válido sin ellas, porque guarda siempre la magnitud
 cruda. Pero hasta que estén medidas y anotadas en `config/calibracion.json`,
-**`reel_rpm`, `wheel_speed`, `header_height` y `reel_index` no se pueden
-publicar**.
+**`reel_rpm`, `header_height` y `reel_index` no se pueden publicar**. La
+velocidad del GPS no necesita ninguna constante: se valida con la prueba de
+§7.2.
 
 | Constante | Cómo se mide |
 |---|---|
-| `circunferencia_rueda_m` | Marcar el neumático, avanzar **diez vueltas en campo y con carga**, medir y dividir. Con la máquina vacía o sobre asfalto sale otro número |
+| `pulsos_por_vuelta` de `HALL01` | Contar los imanes del eje del molinete y girarlo una vuelta a mano: el contador del nodo debe subir exactamente ese número |
 | `radio_molinete_m` | Del centro del eje a la **punta de la púa**, máquina parada y bloqueada |
 | `offset_b_mm` de `US01` | De la cara del sensor al plano de la cuchilla, con el cabezal en el suelo |
 | `offset_b_mm` de `US02` | Igual, lado derecho. **No asumir que es el mismo número**: el montaje rara vez es simétrico |
@@ -238,6 +254,25 @@ Si la prueba falla no se pierde nada del dataset: la distancia cruda se sigue
 guardando, y `header_height` queda como contexto no publicable, igual que una
 constante sin medir.
 
+### 7.2 La comprobación del GPS
+
+El GPS no tiene constante que medir, pero sí hay que comprobar que su velocidad
+sirve, sobre todo a paso lento, que es como trabaja una cosechadora en el lote.
+Son veinte minutos en la primera salida, con una cinta y un cronómetro:
+
+| # | Paso |
+|---|---|
+| 1 | Medir con cinta un tramo recto de **100 m** en el lote o en un camino plano, y marcar el inicio y el final |
+| 2 | Recorrerlo con la máquina a ritmo constante y cronometrar. Velocidad real = 100 / segundos |
+| 3 | Anotar la hora de entrada y de salida: la velocidad del GPS de ese intervalo sale de `telemetria` (`GPS01`, `ground_speed`) |
+| 4 | Repetir a dos o tres velocidades, la más baja la de trabajo con cultivo acamado |
+| 5 | Con la máquina detenida un par de minutos, ver que la filtrada marca 0 (`reposo`) |
+
+Si la media del GPS coincide con la del cronómetro dentro de un 5 % a todas las
+velocidades, la velocidad y el *reel index* se pueden publicar. Si a la más
+baja se aleja, se publica a partir de la velocidad en que sí coincide, y el
+umbral queda anotado en el acta de esa jornada.
+
 ---
 
 ## 8 · Las reglas que no se negocian
@@ -271,6 +306,9 @@ curl -s 192.168.40.2:8000/api/sensores/salud | python -m json.tool
 # ¿se están perdiendo frames de una cámara?
 curl -s 192.168.40.2:8000/api/huecos/CAM02
 
+# ¿tiene solución el GPS?
+curl -s 192.168.40.2:8000/api/status | python -m json.tool | grep -A14 '"gps"'
+
 # ¿qué ha pasado hoy?
 journalctl -u ricevi-central --since today | grep -E "WARNING|ERROR"
 
@@ -284,7 +322,7 @@ sqlite3 /datos/ricevi/ricevi.db \
 ```sql
 SELECT r.porcentaje, r.modelo, r.modelo_version,
        f.ruta, f.sha256, f.capture_utc,
-       e.wheel_speed_mps, e.altura_izq_mm, e.reel_index, e.ri_estado
+       e.ground_speed_mps, e.altura_izq_mm, e.reel_index, e.ri_estado
 FROM resultados r
 JOIN frames f USING (frame_id)
 LEFT JOIN estado_maquina e

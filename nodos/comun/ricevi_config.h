@@ -11,7 +11,7 @@
  * POR QUE ESA FRONTERA: cambiar el ritmo de una camara tiene que ser editar
  * config/censo.py y reiniciar la central. Si estuviera aqui, seria desmontar la
  * caja, sacar la placa del cabezal de una cosechadora, conectarla por USB y
- * reflashear. Ocho veces.
+ * reflashear. Siete veces.
  *
  * UN BINARIO POR ROL, NO POR NODO
  * -------------------------------
@@ -96,7 +96,7 @@
 #define RICEVI_HTTP_TIMEOUT_FRAME_MS  20000   /* subir un JPEG tarda mas */
 
 /* Retroceso ante 429 o error de red.
- * EL JITTER NO ES DECORACION: sin el, ocho nodos que pierden la red a la vez la
+ * EL JITTER NO ES DECORACION: sin el, siete nodos que pierden la red a la vez la
  * recuperan a la vez y reintentan en el mismo milisegundo, produciendo
  * exactamente la tormenta que el control de admision intenta evitar. */
 #define RICEVI_RETROCESO_BASE_MS      150

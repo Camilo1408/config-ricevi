@@ -3,17 +3,22 @@ fusion.py - El estado de la maquina, y lo que ningun nodo puede calcular solo.
 
 EL PROBLEMA
 -----------
-`NH01` conoce las RPM del molinete. `NH02` conoce la velocidad de avance.
-Ninguno de los dos puede calcular el reel index, porque cada uno tiene la mitad
-de la formula y viven en placas distintas con relojes distintos.
+`NH01` conoce las RPM del molinete. El GPS de la central (`GPS01`) conoce la
+velocidad de avance. Ninguno de los dos puede calcular el reel index solo:
+cada uno tiene la mitad de la formula, y el molinete vive en una placa con su
+propio reloj.
 
     v_punta = 2 * pi * R * RPM / 60
-    RI      = v_punta / v_rueda
+    RI      = v_punta / v_suelo
 
-Lo calcula la central emparejando las dos muestras mas cercanas en el tiempo, y
-guarda CUANTO se separan (`ri_pairing_skew_ms`). Un reel index calculado con
-muestras separadas dos segundos no es el mismo dato que uno con veinte
-milisegundos, y quien analice despues tiene que poder distinguirlos.
+Lo calcula la central tomando la ultima velocidad del GPS y buscando la muestra
+de rpm mas cercana a ese instante, y guarda CUANTO se separan
+(`ri_pairing_skew_ms`). Un reel index calculado con muestras separadas dos
+segundos no es el mismo dato que uno con veinte milisegundos, y quien analice
+despues tiene que poder distinguirlos.
+
+Hasta oct-2026 la velocidad venia de un Hall en la rueda (`NH02`) y era una
+ESTIMACION sujeta a patinaje. Con el GPS es la velocidad sobre el suelo.
 
 POR QUE ES UNA TABLA DERIVADA
 -----------------------------
@@ -37,7 +42,7 @@ log = logging.getLogger("ricevi.fusion")
 # Que magnitud de que sensor alimenta cada campo del estado.
 FUENTES = {
     "reel_rpm":        ("HALL01", "reel_rpm"),
-    "wheel_speed_mps": ("HALL02", "wheel_speed"),
+    "ground_speed_mps": ("GPS01", "ground_speed_filtrada"),
     "altura_izq_mm":   ("US01", "header_height"),
     "altura_der_mm":   ("US02", "header_height"),
 }
@@ -86,7 +91,7 @@ def calcular_estado() -> dict:
         return None if c is None else int((ahora - c[1]) / 1000)
 
     fila["reel_rpm_edad_ms"] = edad("reel_rpm")
-    fila["wheel_speed_edad_ms"] = edad("wheel_speed_mps")
+    fila["ground_speed_edad_ms"] = edad("ground_speed_mps")
     fila["altura_izq_edad_ms"] = edad("altura_izq_mm")
     fila["altura_der_edad_ms"] = edad("altura_der_mm")
 
@@ -107,7 +112,7 @@ def calcular_estado() -> dict:
     # --- reel index ---------------------------------------------------------
     ri, skew, estado = None, None, "sin_datos"
     r = _radio_molinete()
-    a, b = crudos.get("reel_rpm"), crudos.get("wheel_speed_mps")
+    a, b = crudos.get("reel_rpm"), crudos.get("ground_speed_mps")
 
     if r is None:
         estado = "sin_calibrar"
@@ -115,6 +120,14 @@ def calcular_estado() -> dict:
         estado = "missing_input"
     else:
         (rpm, t_rpm), (vel, t_vel) = a, b
+        # El GPS da una solucion por segundo y el molinete diez muestras: se
+        # busca la de rpm mas cercana al instante de la velocidad. Si no hay
+        # ninguna dentro de la tolerancia, se queda la ultima y el par sale
+        # 'stale_pair' con su separacion real.
+        tol_us = int(config.TOLERANCIA_EMPAREJAMIENTO_MS * 1000)
+        cerca = basedatos.muestra_cercana("HALL01", "reel_rpm", t_vel, tol_us)
+        if cerca is not None:
+            rpm, t_rpm = float(cerca["valor"]), cerca["capture_session_us"]
         skew = int(abs(t_rpm - t_vel) / 1000)
         if skew > config.TOLERANCIA_EMPAREJAMIENTO_MS:
             # Las dos muestras existen pero estan demasiado separadas para

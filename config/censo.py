@@ -1,9 +1,10 @@
 """
 censo.py - Quien es quien en la maquina. La unica fuente de verdad del montaje.
 
-Define los ocho nodos, que sensor cuelga de cada uno, que magnitudes emite, que
-plan recibe y en que ranura de reloj sincroniza. La central lo importa al
-arrancar; ninguna de estas cifras vive dentro del firmware.
+Define los siete nodos, que sensor cuelga de cada uno, que magnitudes emite, que
+plan recibe y en que ranura de reloj sincroniza, y el receptor GPS que va
+conectado a la propia central. La central lo importa al arrancar; ninguna de
+estas cifras vive dentro del firmware.
 
 POR QUE ESTO NO ES UN .yaml NI UN .json
 ---------------------------------------
@@ -30,13 +31,20 @@ RUTA_CALIBRACION = RAIZ / "config" / "calibracion.json"
 # Sube CENSO_VERSION cada vez que cambies una posicion, una IP o una
 # calibracion. Se escribe en el acta de cada sesion: sin el, dos jornadas con el
 # mismo config_version pero distinto montaje pareceran comparables y no lo son.
-CENSO_VERSION = "censo-1.0.0"
+# censo-1.1.0 (22-oct-2026): sale NH02 (Hall de rueda) y la velocidad pasa al GPS
+# USB de la central (GPS01). Siete nodos en vez de ocho.
+CENSO_VERSION = "censo-1.1.0"
 
 MACHINE_ID = "M01"
 
 # ---------------------------------------------------------------------------
-# Los ocho nodos
+# Los siete nodos
 # ---------------------------------------------------------------------------
+#
+# Hasta oct-2026 habia un octavo, NH02, con un Hall en la rueda para estimar la
+# velocidad. Se retiro porque el agua y el lodo de la rueda no dejaban un montaje
+# fiable, y porque la rueda patina: la velocidad la mide ahora el GPS (GPS01,
+# mas abajo). Su placa ESP32-C6 (MAC F0:F5:BD:0E:D7:30) queda como repuesto.
 #
 # `ip` es la RESERVA DHCP que hay que crear en el punto de acceso por MAC. No es
 # una IP estatica grabada en el nodo: si lo fuera, llevar una placa al taller
@@ -70,11 +78,6 @@ NODOS: list[dict] = [
      "posicion": "Junto al eje del molinete",
      "ip": "192.168.40.21", "mac": "98:A3:16:97:96:74", "etiqueta": "NH01 / MOLINETE"},
 
-    {"node_id": "NH02", "tipo": "sensor", "rol": "hall",
-     "placa": "ESP32-C6 DevKitC", "vista": None, "subsistema": "OPERACION",
-     "posicion": "Junto a la rueda instrumentada",
-     "ip": "192.168.40.22", "mac": "F0:F5:BD:0E:D7:30", "etiqueta": "NH02 / RUEDA"},
-
     {"node_id": "NU01", "tipo": "sensor", "rol": "ultrasonico",
      "placa": "ESP32-C6 DevKitC", "vista": None, "subsistema": "OPERACION",
      "posicion": "Extremo izquierdo del cabezal, mirando al suelo",
@@ -87,7 +90,7 @@ NODOS: list[dict] = [
 ]
 
 SENSORES_POR_NODO: dict[str, list[str]] = {
-    "NH01": ["HALL01"], "NH02": ["HALL02"],
+    "NH01": ["HALL01"],
     "NU01": ["US01"],   "NU02": ["US02"],
 }
 
@@ -98,9 +101,11 @@ SENSORES_POR_NODO: dict[str, list[str]] = {
 # Un Hall no emite "un numero": emite pulsos (lo que mide) y rpm (lo que
 # deriva). Se publican como muestras SEPARADAS, cada una con su `magnitud`.
 #
-# POR QUE SE GUARDA TAMBIEN LA CRUDA: si dentro de tres meses se corrige la
-# circunferencia de la rueda, con los pulsos guardados la velocidad de toda la
-# campana se recalcula. Sin ellos, hay que repetir la campana.
+# POR QUE SE GUARDA TAMBIEN LA CRUDA: si dentro de tres meses se corrige el
+# numero de imanes del molinete, con los pulsos guardados las rpm de toda la
+# campana se recalculan. Sin ellos, hay que repetir la campana. Con el GPS pasa
+# lo mismo: se guarda la velocidad que entrega el receptor y, aparte, la
+# filtrada que usa la central.
 
 MAGNITUDES: dict[str, list[dict]] = {
     "HALL01": [
@@ -110,12 +115,17 @@ MAGNITUDES: dict[str, list[dict]] = {
          "rango": [0.0, 120.0], "requiere": ["pulsos_por_vuelta"],
          "descripcion": "Revoluciones por minuto del molinete"},
     ],
-    "HALL02": [
-        {"magnitud": "pulsos_ventana", "unidad": "count", "derivada": False,
-         "rango": [0, 10000], "descripcion": "Pulsos contados en la ventana"},
-        {"magnitud": "wheel_speed", "unidad": "m/s", "derivada": True,
-         "rango": [0.0, 8.0], "requiere": ["circunferencia_rueda_m"],
-         "descripcion": "Velocidad de avance estimada por rueda"},
+    "GPS01": [
+        {"magnitud": "ground_speed", "unidad": "m/s", "derivada": False,
+         "rango": [0.0, 8.0],
+         "descripcion": "Velocidad sobre el suelo del receptor (Doppler, NMEA RMC/VTG)"},
+        {"magnitud": "ground_speed_filtrada", "unidad": "m/s", "derivada": True,
+         "rango": [0.0, 8.0],
+         "descripcion": "Media movil de ground_speed con umbral de reposo"},
+        {"magnitud": "satelites", "unidad": "count", "derivada": False,
+         "rango": [0, 40], "descripcion": "Satelites usados en la solucion (NMEA GGA)"},
+        {"magnitud": "hdop", "unidad": "1", "derivada": False,
+         "rango": [0.0, 99.9], "descripcion": "Dilucion horizontal de la precision (NMEA GGA)"},
     ],
     "US01": [
         {"magnitud": "distance", "unidad": "mm", "derivada": False,
@@ -150,6 +160,9 @@ CODIGOS_CALIDAD: dict[str, tuple[str, str]] = {
     "eco_dudoso":   ("dudosa",   "Distancia plausible pero inestable entre lecturas"),
     "sin_calibrar": ("invalida", "Falta la constante para derivar la magnitud"),
     "saturado":     ("dudosa",   "Valor en el limite superior del rango"),
+    "sin_fix":      ("invalida", "El GPS no tiene solucion de posicion: no hay velocidad"),
+    "hdop_alto":    ("dudosa",   "GPS con geometria pobre (HDOP por encima del maximo)"),
+    "reposo":       ("buena",    "GPS por debajo del umbral de reposo: maquina detenida"),
 }
 
 # ---------------------------------------------------------------------------
@@ -224,11 +237,6 @@ PLANES: dict[str, dict] = {
         "pulsos_por_vuelta": 8, "flanco": "subida", "filtro_pcnt_ns": 1000,
         "pedir_turno": False,
     },
-    "NH02": {
-        "muestreo_hz": 10.0, "muestras_por_lote": 10, "ventana_ms": 100,
-        "pulsos_por_vuelta": 8, "flanco": "subida", "filtro_pcnt_ns": 1000,
-        "pedir_turno": False,
-    },
     "NU01": {
         "muestreo_hz": 8.0, "muestras_por_lote": 8,
         # RCWL-1655 en modo GPIO: tiempo maximo de espera del eco (~5 m) y
@@ -246,10 +254,56 @@ PLANES: dict[str, dict] = {
 }
 
 # ---------------------------------------------------------------------------
+# El GPS de la central
+# ---------------------------------------------------------------------------
+#
+# Decision del equipo (22-oct-2026): la velocidad de avance la mide un receptor
+# GPS USB tipo VK-162 (chip u-blox 7, WAAS/EGNOS) conectado a la Raspberry Pi,
+# con la antena magnetica en el TECHO DE LA CABINA. Sustituye al Hall de rueda.
+#
+# POR QUE DOPPLER Y NO DISTANCIA ENTRE POSICIONES: el receptor calcula la
+# velocidad con el desplazamiento Doppler de la portadora, que es mucho menos
+# ruidoso que derivar posiciones sucesivas (errores de metros). Y mide la
+# velocidad real sobre el suelo: sin patinaje, sin circunferencia que medir.
+#
+# LA POSICION NO SE GUARDA. La central lee la latitud y la longitud solo para
+# validar la trama y las descarta: en la base no queda donde estaba el lote.
+# Es lo que se declaro en el concurso ("el GPS solo mide la velocidad").
+#
+# `puerto`: "auto" busca en /dev/serial/by-id/ un dispositivo u-blox. NUNCA se
+# toma /dev/ttyACM0 a ciegas: la ESP32-C6 tambien aparece como ttyACM0 al
+# provisionarla desde la Pi, y la central acabaria leyendo la consola del nodo.
+GPS = {
+    "sensor_id": "GPS01",
+    "node_id": "RPI01",
+    "modelo": "VK-162 (u-blox 7)",
+    "posicion": "Antena magnetica en el techo de la cabina, cielo despejado",
+    "puerto": "auto",
+    "patron_by_id": "*u-blox*",
+    "baudios": 9600,
+    # El VK-162 entrega una solucion por segundo de fabrica.
+    "periodo_s": 1.0,
+    # Media movil sobre esta ventana. Quita el temblor de +-0,1 m/s del Doppler
+    # sin retrasar la velocidad mas de ~1,5 s.
+    "ventana_filtro_s": 3.0,
+    # Por debajo de esto la filtrada se publica como 0 con codigo 'reposo': con
+    # la maquina detenida el receptor sigue dando 0,05-0,2 m/s de ruido.
+    "umbral_reposo_mps": 0.2,
+    # Con HDOP por encima de esto la muestra entra como 'dudosa'.
+    "hdop_max": 5.0,
+    # Incertidumbre temporal declarada: el receptor emite la trama unas decenas
+    # de ms despues del instante de la solucion, y la central la sella al leerla.
+    "incertidumbre_ms": 100.0,
+}
+
+SENSORES_CENTRAL: dict[str, list[str]] = {"RPI01": [GPS["sensor_id"]]}
+
+# ---------------------------------------------------------------------------
 # Ranuras de sincronia
 # ---------------------------------------------------------------------------
 #
-# Ocho nodos, ocho ranuras de 3,75 s dentro del ciclo de 30 s.
+# Siete nodos, siete ranuras de ~4,3 s dentro del ciclo de 30 s. El GPS no
+# tiene ranura: va conectado a la central y comparte su reloj.
 #
 # Las camaras van primero porque su `capture_session_us` es lo que se asocia con
 # la telemetria: conviene que su offset sea el mas fresco cuando empieza la
@@ -260,7 +314,7 @@ PLANES: dict[str, dict] = {
 # los dos sincronizarian a la vez, produciendo la rafaga que el escalonado
 # quiere evitar.
 
-ORDEN_RANURAS = ["CAM01", "CAM02", "CAM03", "CAM04", "NH01", "NH02", "NU01", "NU02"]
+ORDEN_RANURAS = ["CAM01", "CAM02", "CAM03", "CAM04", "NH01", "NU01", "NU02"]
 CICLO_SYNC_S = 30.0
 RANURA_S = CICLO_SYNC_S / len(ORDEN_RANURAS)
 
@@ -447,7 +501,7 @@ def verificar() -> dict:
         if not n["mac"]:
             avisos.append(f"{nid}: falta la MAC, no se puede reservar DHCP")
 
-    for nodo, sensores in SENSORES_POR_NODO.items():
+    for nodo, sensores in {**SENSORES_POR_NODO, **SENSORES_CENTRAL}.items():
         for s in sensores:
             if s not in MAGNITUDES:
                 bloqueantes.append(f"{nodo}: el sensor {s} no tiene magnitudes declaradas")
@@ -481,6 +535,8 @@ def resumen() -> dict:
                   for n in NODOS},
         "planes": PLANES,
         "sensores_por_nodo": SENSORES_POR_NODO,
+        "sensores_central": SENSORES_CENTRAL,
+        "gps": GPS,
         "magnitudes": MAGNITUDES,
         "orden_ranuras": ORDEN_RANURAS,
         "bateria": BATERIA,

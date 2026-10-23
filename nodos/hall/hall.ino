@@ -1,16 +1,17 @@
 /*
- * hall.ino - Firmware de NH01 (molinete) y NH02 (rueda).
- *
- * EL MISMO BINARIO PARA LOS DOS. Que magnitud derivada publica cada uno lo
- * decide el plan que manda la central, no el codigo:
+ * hall.ino - Firmware de NH01 (molinete).
  *
  *   NH01 -> HALL01 -> pulsos_ventana (count) + reel_rpm (rpm)
- *   NH02 -> HALL02 -> pulsos_ventana (count) + wheel_speed (m/s)
+ *
+ * Hasta oct-2026 el mismo binario servia tambien a NH02, un Hall en la rueda
+ * que estimaba la velocidad de avance. Ese nodo se retiro: el agua y el lodo de
+ * la rueda no dejaban un montaje fiable, y la velocidad la mide ahora el GPS
+ * USB de la central (central/app/gps.py), sin patinaje.
  *
  * POR QUE SE PUBLICAN DOS MAGNITUDES Y NO SOLO LA DERIVADA
  * --------------------------------------------------------
- * Porque si dentro de tres meses se corrige la circunferencia de la rueda, con
- * los pulsos guardados la velocidad de toda la campana se recalcula. Sin ellos,
+ * Porque si dentro de tres meses se corrige el numero de imanes del molinete,
+ * con los pulsos guardados las rpm de toda la campana se recalculan. Sin ellos,
  * hay que repetir la campana. Los pulsos son el dato; las rpm son una
  * interpretacion del dato.
  *
@@ -67,7 +68,6 @@ static size_t enLote_ = 0;
 // tienen que seguir vivos hasta que se serialice el lote.
 static char sensorId_[12] = "HALL01";
 static char calibId_[32] = "";
-static bool esRueda_ = false;
 
 /* ------------------------------------------------------------------ */
 
@@ -145,7 +145,6 @@ void setup() {
   // Que sensor cuelga de este nodo lo dice el plan, no el binario.
   const char* s = nodo.plan()["sensores"][0] | "HALL01";
   strncpy(sensorId_, s, sizeof(sensorId_) - 1);
-  esRueda_ = (strcmp(sensorId_, "HALL02") == 0);
 
   const char* cid = nodo.plan()["calibration_id"] | "";
   strncpy(calibId_, cid, sizeof(calibId_) - 1);
@@ -189,7 +188,6 @@ void loop() {
 
   // --- magnitud derivada -------------------------------------------------
   const int ppv = nodo.plan()["pulsos_por_vuelta"] | 8;
-  JsonVariantConst cal = nodo.plan()["calibracion"][sensorId_];
 
   const uint32_t derivadaMs = nodo.plan()["ventana_derivada_ms"] | 1000;
   const size_t nDesliz = constrain(derivadaMs / max<uint32_t>(ventanaMs, 1), 1u, MAX_DESLIZ);
@@ -223,29 +221,14 @@ void loop() {
     vps = sumPulsos > 0 ? min(media, cota) : cota;
   }
 
-  if (esRueda_) {
-    const float circ = cal["circunferencia_rueda_m"] | 0.0f;
-    if (circ <= 0.0f) {
-      // Sin la constante no hay magnitud derivada. Publicar una velocidad
-      // calculada con una circunferencia inventada seria dar por medido algo
-      // que no lo esta.
-      anadir("wheel_speed", "m/s", false, 0.0f, "sin_calibrar",
-             capturaUs, ventanaUs, pulsos, edadMs);
-    } else {
-      const float v = vps * circ;                        // v = N*C / (P*dt)
-      anadir("wheel_speed", "m/s", v <= 8.0f, v,
-             v <= 8.0f ? "ok" : "fuera_rango", capturaUs, ventanaUs, pulsos, edadMs);
-    }
-  } else {
-    const float rpm = 60.0f * vps;                       // RPM = 60N / (P*dt)
-    anadir("reel_rpm", "rpm", rpm <= 120.0f, rpm,
-           rpm <= 120.0f ? "ok" : "fuera_rango", capturaUs, ventanaUs, pulsos, edadMs);
-  }
+  const float rpm = 60.0f * vps;                         // RPM = 60N / (P*dt)
+  anadir("reel_rpm", "rpm", rpm <= 120.0f, rpm,
+         rpm <= 120.0f ? "ok" : "fuera_rango", capturaUs, ventanaUs, pulsos, edadMs);
 
   // --- enviar el lote -----------------------------------------------------
   // Por lotes y no una a una: a 10 Hz seria una peticion cada 100 ms por nodo,
-  // cuarenta por segundo entre los cuatro, sobre el mismo radio que las camaras
-  // necesitan. Cada muestra lleva su propio capture_session_us, asi que el
+  // unas veintiseis por segundo entre los tres sensores, sobre el radio que las
+  // camaras necesitan. Cada muestra lleva su propio capture_session_us, asi que el
   // agrupamiento retrasa la ENTREGA, no degrada la MEDIDA.
   if (enLote_ >= porLote) {
     seqLote_++;

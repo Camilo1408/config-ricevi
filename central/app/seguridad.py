@@ -50,7 +50,7 @@ def cargar(ruta: Path | None = None) -> int:
 
     El archivo lo produce herramientas/generar_tokens.py y vive FUERA del
     repositorio, en el directorio de datos. Si estuviera versionado, el primer
-    `git push` publicaria las credenciales de los ocho nodos.
+    `git push` publicaria las credenciales de los siete nodos.
     """
     global _CARGADO
     ruta = ruta or config.RUTA_TOKENS

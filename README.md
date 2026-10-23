@@ -5,14 +5,20 @@ real en campo con el hardware definitivo:
 
 - **1 × Raspberry Pi 5 (8 GB)** como central: recibe, verifica, persiste, infiere y sirve el HMI.
 - **4 × GOOUUU ESP32-S3-CAM** (N16R8) con OV3660 (`CAM01`–`CAM04`); `CAM04` con LED de tolva pulsado.
-- **2 × ESP32-C6 DevKitC** con sensor Hall HW-477 (`NH01` molinete, `NH02` rueda).
+- **1 × ESP32-C6 DevKitC** con sensor Hall HW-477 (`NH01`, molinete).
 - **2 × ESP32-C6 DevKitC** con ultrasónico RCWL-1655 en modo Trig/Echo (`NU01` izquierdo, `NU02` derecho).
+- **1 × receptor GPS USB VK-162** (u-blox 7) conectado a la Pi, con la antena en el
+  techo de la cabina (`GPS01`): mide la velocidad de avance. La posición no se guarda.
 - **1 × router Tenda N301** (2,4 GHz) como punto de acceso dedicado.
+
+Siete ESP32 en total. Hasta octubre de 2026 había un octavo, `NH02`, con un Hall
+en la rueda; se retiró porque el agua y el lodo no dejaban montarlo y porque la
+rueda patina. El GPS mide la velocidad sobre el suelo sin ese error.
 
 Cada nodo lleva 4 pilas AA Ni-MH y no lleva microSD: las imágenes van directo
 al SSD de la Pi. La central y el router se alimentan de una batería LiFePO4 de
 12 V. Nada se conecta a la cosechadora. Detalle en
-`docs/01-arquitectura-hardware.md` (versión 1.2).
+`docs/01-arquitectura-hardware.md` (versión 1.3).
 
 > **Este proyecto es independiente de `prubea-conex/`.** Aquel es el banco de
 > simulación, con hardware sustituto y sensores sintéticos, y se conserva aparte
@@ -48,10 +54,18 @@ config-ricevi-campo/
 ├── config/          censo de nodos, calibración física y configuración de red
 ├── central/         el servidor que corre en la Raspberry Pi 5
 ├── modelos/         interfaz de modelo, el nulo y el de producción
-├── nodos/           firmware de los ocho ESP32 (S3 en cámaras, C6 en sensores)
+├── nodos/           firmware de los siete ESP32 (S3 en cámaras, C6 en sensores)
 ├── herramientas/    instalación, provisión, verificación, respaldo y exportación
-└── docs/            el manual de campo
+└── docs/            estado del proyecto, diseño, configuración, manual y concurso
 ```
+
+| Documento | Qué es |
+|---|---|
+| `docs/00_ESTADO_ACTUAL_PROYECTO.md` | **Fuente de verdad**: decisiones cerradas, pendientes y próximos pasos |
+| `docs/01-arquitectura-hardware.md` | Diseño: hardware, alimentación, red, datos y procesamiento |
+| `docs/02-configuracion-sistema.md` | Dónde vive cada ajuste y qué pasa si se cambia |
+| `docs/03-manual-de-campo.md` | Lo que se hace, en orden, en una jornada |
+| `docs/concurso/` | Postulación a NEIVA FEST Reto Innova 2026: resumen, cifras y fuentes |
 
 ## Puesta en marcha, en orden
 
@@ -74,7 +88,7 @@ faltan, no se puede configurar el punto de acceso.
 python herramientas/generar_tokens.py
 ```
 
-**4 · Instalar la central en la Pi**
+**4 · Conectar el GPS a un USB de la Pi e instalar la central**
 
 ```bash
 ./herramientas/copiar_a_pi.ps1
@@ -104,11 +118,12 @@ python herramientas/verificar_campo.py
 Cuatro constantes viven en `config/calibracion.json` con valor provisional. El
 sistema funciona y **captura dataset válido** sin ellas, porque guarda siempre la
 magnitud cruda. Pero hasta que estén medidas y anotadas, `reel_rpm`,
-`wheel_speed`, `header_height` y `reel_index` **no se pueden publicar**:
+`header_height` y `reel_index` **no se pueden publicar**. La velocidad del GPS no
+necesita constantes; se valida con un tramo medido (manual de campo, §7.2):
 
 | Constante | Qué es | Cómo se mide |
 |---|---|---|
-| `circunferencia_rueda_m` | Circunferencia efectiva de la rueda instrumentada | Marcar el neumático, avanzar diez vueltas **con carga**, medir y dividir |
+| `pulsos_por_vuelta` de `HALL01` | Imanes en el eje del molinete | Contarlos y comprobar con una vuelta a mano |
 | `radio_molinete_m` | Radio efectivo del molinete hasta la punta de la púa | Metro, con la máquina parada |
 | `offset_b_mm` de `US01` | Distancia de la cara del sensor al plano de la cuchilla | Metro, con el cabezal en el suelo |
 | `offset_b_mm` de `US02` | Ídem, lado derecho | Ídem |

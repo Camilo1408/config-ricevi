@@ -16,6 +16,9 @@
 #   - Que haya bateria de RTC, porque de ella depende que la hora de los datos
 #     sea fiable sin Internet.
 #   - Que el ventilador exista, porque sin el la CPU se estrangula bajo carga.
+#   - Que el GPS USB (VK-162) se vea por /dev/serial/by-id/ y que nadie mas le
+#     quite el puerto: ModemManager y gpsd lo abren por su cuenta, y la central
+#     se quedaria sin velocidad de avance sin ningun error claro.
 
 set -euo pipefail
 
@@ -33,18 +36,18 @@ echo "Datos    : ${DATOS}"
 echo
 
 # ---------------------------------------------------------------- 1. sistema
-echo "1/7  Paquetes del sistema"
+echo "1/8  Paquetes del sistema"
 sudo apt-get update -qq
 sudo apt-get install -y -qq \
     python3-venv python3-dev build-essential \
     libjpeg-dev zlib1g-dev libopenblas0 \
-    avahi-daemon sqlite3 rsync
+    avahi-daemon sqlite3 rsync usbutils
 sudo systemctl enable --now avahi-daemon
 verde "    avahi-daemon: $(systemctl is-active avahi-daemon)"
 
 # ------------------------------------------------------------ 2. almacenamiento
 echo
-echo "2/7  Almacenamiento"
+echo "2/8  Almacenamiento"
 sudo mkdir -p "${DATOS}"
 sudo chown -R "${USUARIO}:${USUARIO}" "$(dirname "${DATOS}")" 2>/dev/null || true
 sudo chown -R "${USUARIO}:${USUARIO}" "${DATOS}"
@@ -71,7 +74,7 @@ fi
 
 # ------------------------------------------------------------------- 3. reloj
 echo
-echo "3/7  Reloj"
+echo "3/8  Reloj"
 if [[ -e /dev/rtc0 || -e /dev/rtc ]]; then
     verde "    RTC presente"
     if command -v hwclock >/dev/null; then
@@ -85,7 +88,7 @@ echo "    NTP sincronizado: $(timedatectl show -p NTPSynchronized --value)"
 
 # -------------------------------------------------------------- 4. refrigeracion
 echo
-echo "4/7  Refrigeracion"
+echo "4/8  Refrigeracion"
 TEMP="$(vcgencmd measure_temp 2>/dev/null | tr -dc '0-9.' || echo '?')"
 echo "    temperatura en reposo: ${TEMP} C"
 if ls /sys/class/hwmon/*/pwm1 >/dev/null 2>&1; then
@@ -97,9 +100,36 @@ THROT="$(vcgencmd get_throttled 2>/dev/null || echo 'throttled=?')"
 echo "    ${THROT}"
 [[ "${THROT}" == "throttled=0x0" ]] || amar "    ya hubo estrangulamiento o bajo voltaje"
 
-# ------------------------------------------------------------------ 5. entorno
+# --------------------------------------------------------------------- 5. GPS
 echo
-echo "5/7  Entorno de Python"
+echo "5/8  GPS (velocidad de avance)"
+# El puerto serie del GPS y el de la provision de nodos son del grupo dialout.
+if id -nG "${USUARIO}" | grep -qw dialout; then
+    verde "    ${USUARIO} ya esta en dialout"
+else
+    sudo usermod -aG dialout "${USUARIO}"
+    amar "    ${USUARIO} anadido a dialout: hace falta cerrar sesion y volver a entrar"
+fi
+# ModemManager prueba con comandos AT cada ttyACM nuevo, y el VK-162 lo es.
+if systemctl is-active --quiet ModemManager 2>/dev/null; then
+    sudo systemctl disable --now ModemManager
+    amar "    ModemManager desactivado (se apoderaba del puerto del GPS)"
+fi
+if systemctl is-active --quiet gpsd 2>/dev/null; then
+    amar "    gpsd esta activo y abre el GPS por su cuenta. La central lee el"
+    amar "    receptor directamente: sudo systemctl disable --now gpsd gpsd.socket"
+fi
+GPS_DEV="$(ls /dev/serial/by-id/*u-blox* 2>/dev/null | head -1 || true)"
+if [[ -n "${GPS_DEV}" ]]; then
+    verde "    receptor: ${GPS_DEV} -> $(readlink -f "${GPS_DEV}")"
+else
+    amar "    NO se ve el GPS. Conecta el VK-162 a un USB de la Pi (lsusb debe"
+    amar "    mostrar 'u-blox'). Sin el no habra velocidad ni reel index."
+fi
+
+# ------------------------------------------------------------------ 6. entorno
+echo
+echo "6/8  Entorno de Python"
 cd "${RAIZ}"
 [[ -d .venv ]] || python3 -m venv .venv
 # shellcheck disable=SC1091
@@ -112,11 +142,11 @@ else
     pip install --quiet -r central/requirements.txt
     verde "    instalado desde la red"
 fi
-python -c "import fastapi, uvicorn, pydantic, psutil; print('    librerias OK')"
+python -c "import fastapi, uvicorn, pydantic, psutil, serial; print('    librerias OK')"
 
-# -------------------------------------------------------------------- 6. censo
+# -------------------------------------------------------------------- 7. censo
 echo
-echo "6/7  Censo y tokens"
+echo "7/8  Censo y tokens"
 if python config/censo.py >/dev/null 2>&1; then
     verde "    censo coherente"
 else
@@ -129,9 +159,9 @@ else
     amar "    faltan tokens. Ejecuta: python herramientas/generar_tokens.py"
 fi
 
-# ------------------------------------------------------------------ 7. servicio
+# ------------------------------------------------------------------ 8. servicio
 echo
-echo "7/7  Servicio del sistema"
+echo "8/8  Servicio del sistema"
 UNIDAD=/etc/systemd/system/ricevi-central.service
 sudo cp "${RAIZ}/herramientas/ricevi-central.service" "${UNIDAD}"
 sudo sed -i "s|__RAIZ__|${RAIZ}|g;  s|__USUARIO__|${USUARIO}|g;  s|__DATOS__|${DATOS}|g" "${UNIDAD}"

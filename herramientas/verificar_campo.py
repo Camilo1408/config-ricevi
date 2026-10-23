@@ -10,20 +10,26 @@ Cada comprobacion da por hecho lo que confirmo la anterior, de modo que
 **la primera que falla dice donde esta el problema**:
 
   1. El censo es coherente
-  2. Hay tokens para los ocho nodos
+  2. Hay tokens para los siete nodos
   3. La central responde
   4. La central no tiene avisos bloqueantes
-  5. Los ocho nodos estan en linea
+  5. Los siete nodos estan en linea
   6. Cada nodo tiene reloj sincronizado
   7. Las camaras estan produciendo frames
   8. Los sensores estan produciendo muestras validas
-  9. Queda disco para la jornada
- 10. La temperatura esta en rango
- 11. Las calibraciones estan medidas
+  9. El GPS esta conectado y tiene solucion
+ 10. Queda disco para la jornada
+ 11. La temperatura esta en rango
+ 12. Las calibraciones estan medidas
 
-Las diez primeras son BLOQUEANTES: si alguna falla, no se sale a campo. La
+Las once primeras son BLOQUEANTES: si alguna falla, no se sale a campo. La
 ultima es un aviso: se puede capturar dataset con calibraciones provisionales,
 pero las magnitudes derivadas no se podran publicar.
+
+El GPS sin solucion es un fallo y no un aviso porque sin el no hay velocidad de
+avance ni reel index en toda la jornada. Dentro de un galpon no la tendra: la
+comprobacion se hace con la maquina al aire libre, y el receptor necesita uno o
+dos minutos desde frio para encontrar los satelites.
 """
 
 from __future__ import annotations
@@ -88,7 +94,7 @@ def main() -> int:
     if sin_mac:
         mal("faltan MAC en el censo", ", ".join(sin_mac))
     else:
-        bien("las ocho MAC estan anotadas")
+        bien("las siete MAC estan anotadas")
 
     # --- 2. tokens ----------------------------------------------------------
     rt = Path(os.getenv("RICEVI_TOKENS",
@@ -99,7 +105,7 @@ def main() -> int:
         if faltan:
             mal("faltan tokens", ", ".join(faltan))
         else:
-            bien("hay token para los ocho nodos")
+            bien("hay token para los siete nodos")
     else:
         mal("no hay archivo de tokens", str(rt))
 
@@ -134,10 +140,10 @@ def main() -> int:
     if caidos:
         mal("nodos sin senales recientes", ", ".join(caidos))
     if not ausentes and not caidos:
-        bien("los ocho nodos estan en linea")
+        bien("los siete nodos estan en linea")
 
     # --- 4b. baterias ---------------------------------------------------------
-    # Con ocho paquetes 18650 independientes, salir con uno a media carga es
+    # Con siete juegos de pilas independientes, salir con uno a media carga es
     # perder esa vista a mitad de jornada. Se comprueba ANTES de arrancar.
     b = censo.BATERIA
     sin_dato, bajos, criticos = [], [], []
@@ -158,7 +164,7 @@ def main() -> int:
         aviso("nodos que no reportan batería", ", ".join(sin_dato))
     if not criticos and not bajos and not sin_dato:
         pk = [f"{n['node_id']} {n['bateria_mv']/1000:.2f} V" for n in est["nodos"]]
-        bien("los ocho paquetes con carga suficiente", " · ".join(pk[:3]) + " …")
+        bien("los siete juegos de pilas con carga suficiente", " · ".join(pk[:3]) + " …")
 
     # Autonomía estimada del rol más exigente frente a la jornada declarada.
     peor_rol = min(censo.CONSUMO,
@@ -177,7 +183,7 @@ def main() -> int:
         mal("nodos sin reloj sincronizado", ", ".join(sin_reloj))
     else:
         peor = max((n["rtt_us"] for n in est["nodos"] if n.get("rtt_us")), default=0)
-        bien("los ocho tienen reloj", f"peor RTT {peor/1000:.1f} ms")
+        bien("los siete tienen reloj", f"peor RTT {peor/1000:.1f} ms")
 
     # --- 6. produccion --------------------------------------------------------
     camaras = [n for n in est["nodos"] if n["tipo"] == "camara"]
@@ -193,7 +199,7 @@ def main() -> int:
     if sin_muestras:
         mal("nodos de sensor sin muestras", ", ".join(sin_muestras))
     else:
-        bien("los cuatro sensores estan produciendo",
+        bien("los tres sensores estan produciendo",
              f"{est['contadores']['muestras']} muestras")
 
     # --- 7. calidad de los sensores -------------------------------------------
@@ -213,7 +219,28 @@ def main() -> int:
     except Exception as e:
         aviso("no se pudo leer la salud de sensores", str(e)[:80])
 
-    # --- 8. disco --------------------------------------------------------------
+    # --- 8. GPS ---------------------------------------------------------------
+    g = est.get("gps") or {}
+    u = g.get("ultima") or {}
+    if not g.get("activo"):
+        mal("el GPS esta desactivado", "RICEVI_GPS=0: no habra velocidad ni reel index")
+    elif not g.get("conectado"):
+        mal("el GPS no esta conectado", g.get("motivo", ""))
+    elif not u.get("fix"):
+        mal("el GPS no tiene solucion",
+            f"{u.get('satelites', '?')} satelites. Al aire libre, con la antena en "
+            f"el techo, y esperar uno o dos minutos")
+    elif g.get("edad_s") is not None and g["edad_s"] > 5:
+        mal("el GPS dejo de entregar soluciones", f"ultima hace {g['edad_s']:.0f} s")
+    else:
+        hd = u.get("hdop")
+        txt = f"{u.get('satelites')} satelites" + (f", HDOP {hd:.1f}" if hd else "")
+        if hd is not None and hd > censo.GPS["hdop_max"]:
+            aviso("GPS con geometria pobre", txt)
+        else:
+            bien("el GPS tiene solucion", txt)
+
+    # --- 9. disco --------------------------------------------------------------
     salud = est["salud"]
     libre = salud["libre_mb"]
     # A 1 img/s por camara y 150 kB por imagen: ~2,1 GB por hora.
@@ -227,7 +254,7 @@ def main() -> int:
         bien("hay disco para la jornada",
              f"{libre} MB libres, ~{necesario} MB necesarios")
 
-    # --- 9. temperatura ---------------------------------------------------------
+    # --- 10. temperatura --------------------------------------------------------
     t = salud.get("temp_c")
     if t is None:
         aviso("no se puede leer la temperatura", "¿no es una Raspberry Pi?")
@@ -242,7 +269,7 @@ def main() -> int:
         aviso("el PMIC reporta estrangulamiento o bajo voltaje",
               str(salud.get("throttled")))
 
-    # --- 10. calibraciones -------------------------------------------------------
+    # --- 11. calibraciones -------------------------------------------------------
     if v["avisos"]:
         for x in v["avisos"]:
             if "PROVISIONAL" in x or "falta" in x:

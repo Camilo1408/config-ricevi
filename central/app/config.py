@@ -29,7 +29,9 @@ from config import censo  # noqa: E402
 # Sube CONFIG_VERSION si cambias cualquier valor de este archivo que afecte a
 # los datos. Es lo que permite, dentro de tres meses, saber por que dos tandas
 # no son comparables.
-CONFIG_VERSION = "cfg-campo-1.0.0"
+# cfg-campo-1.1.0 (22-oct-2026): la velocidad sale del GPS de la central y
+# estado_maquina pasa de wheel_speed_* a ground_speed_*.
+CONFIG_VERSION = "cfg-campo-1.1.0"
 
 # El contrato que emiten los ESP32. La central acepta las dos versiones durante
 # una transicion de firmware: ver contratos.VERSIONES_ACEPTADAS.
@@ -88,7 +90,7 @@ AVISO_MB = int(os.getenv("RICEVI_AVISO_MB", "32768"))         # 32 GB
 # ---------------------------------------------------------------------------
 #
 # Cuantas camaras pueden subir a la vez. Con 1 las subidas se serializan, que es
-# lo que protege el medio de 2,4 GHz compartido por ocho nodos. Subirlo mide el
+# lo que protege el medio de 2,4 GHz compartido por siete nodos. Subirlo mide el
 # punto donde el enlace deja de aguantar.
 TURNOS_SIMULTANEOS = int(os.getenv("RICEVI_TURNOS", "1"))
 TURNO_SEGUNDOS = float(os.getenv("RICEVI_TURNO_S", "8.0"))
@@ -162,6 +164,17 @@ VELOCIDAD_MINIMA_RI = float(os.getenv(
 # Cada cuanto se recalcula el estado fusionado de la maquina.
 PERIODO_FUSION_S = float(os.getenv("RICEVI_PERIODO_FUSION_S", "0.5"))
 
+# ---------------------------------------------------------------------------
+# GPS (velocidad de avance)
+# ---------------------------------------------------------------------------
+#
+# El receptor va por USB a la Pi. "auto" lo busca por /dev/serial/by-id/; se
+# puede fijar una ruta si hay dos receptores o un nombre distinto. Con
+# RICEVI_GPS=0 la central arranca sin leerlo (banco, pruebas): no habra
+# velocidad ni reel index, y el HMI lo dice.
+GPS_ACTIVO = os.getenv("RICEVI_GPS", "1") not in ("0", "false", "no")
+GPS_PUERTO = os.getenv("RICEVI_GPS_PUERTO", censo.GPS["puerto"])
+
 
 def asegurar_directorios() -> None:
     for d in (DIR_DATOS, DIR_FRAMES, DIR_DERIVADOS, DIR_EXPORT):
@@ -196,4 +209,6 @@ def resumen() -> dict:
         "tolerancia_asociacion_ms": TOLERANCIA_ASOCIACION_MS,
         "tolerancia_emparejamiento_ms": TOLERANCIA_EMPAREJAMIENTO_MS,
         "velocidad_minima_ri_mps": VELOCIDAD_MINIMA_RI,
+        "gps_activo": GPS_ACTIVO,
+        "gps_puerto": GPS_PUERTO,
     }

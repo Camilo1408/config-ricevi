@@ -200,9 +200,9 @@ function maquina(d) {
   let filas =
     `<tr><th>Variable</th><th class="num">Valor</th><th class="num">Edad</th></tr>` +
     f("Molinete", m.reel_rpm, " rpm", m.reel_rpm_edad_ms) +
-    // En km/h para el operario; la base guarda m/s.
-    f("Velocidad", m.wheel_speed_mps == null ? null : m.wheel_speed_mps * 3.6,
-      " km/h", m.wheel_speed_edad_ms, 1) +
+    // En km/h para el operario; la base guarda m/s. Viene del GPS de la cabina.
+    f("Velocidad (GPS)", m.ground_speed_mps == null ? null : m.ground_speed_mps * 3.6,
+      " km/h", m.ground_speed_edad_ms, 1) +
     f("Altura izq.", m.altura_izq_mm, " mm", m.altura_izq_edad_ms, 0) +
     f("Altura der.", m.altura_der_mm, " mm", m.altura_der_edad_ms, 0);
 
@@ -215,6 +215,21 @@ function maquina(d) {
   filas += `<tr><td>Reel index</td><td class="num">${ri}</td>
             <td class="num">${m.ri_pairing_skew_ms != null
               ? m.ri_pairing_skew_ms + " ms" : ""}</td></tr>`;
+
+  // El receptor GPS no es un nodo: va por USB a la Pi. Si no tiene solucion,
+  // no hay velocidad ni reel index, y el operario tiene que saber por que.
+  const g = d.gps || {};
+  const u = g.ultima || {};
+  let txtGps;
+  if (!g.activo) txtGps = '<span class="n">desactivado</span>';
+  else if (!g.conectado) txtGps = `<span class="x">sin receptor</span>`;
+  else if (!u.fix) txtGps = `<span class="m">sin señal${u.satelites != null
+                              ? ` · ${u.satelites} sat.` : ""}</span>`;
+  else txtGps = `<span class="b">${u.satelites ?? "?"} sat.${u.hdop != null
+                   ? ` · HDOP ${u.hdop.toFixed(1)}` : ""}</span>`;
+  filas += `<tr><td>GPS</td><td class="num">${txtGps}</td>
+            <td class="num">${g.edad_s == null ? '<span class="n">—</span>'
+                                               : edad(g.edad_s)}</td></tr>`;
 
   if (m.nodos_ausentes)
     filas += `<tr><td colspan="3" class="x">Sin dato de: ${m.nodos_ausentes}</td></tr>`;
@@ -237,7 +252,7 @@ function nodos(d) {
                <th class="num">Visto</th></tr>`;
   for (const n of d.nodos) {
     const env = n.tipo === "camara" ? n.frames : n.muestras;
-    // Cada nodo lleva su propio paquete de 18650: saber cuál se está agotando
+    // Cada nodo lleva su propio juego de pilas AA: saber cuál se está agotando
     // es lo que evita perder una vista a mitad de jornada sin aviso.
     const cb = {ok:"b", aviso:"m", critico:"x", sin_dato:"n"}[n.bateria_estado];
     const bat = n.bateria_mv == null

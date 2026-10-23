@@ -25,31 +25,19 @@
       "_como_medir_radio_molinete_m": "Metro desde el centro del eje hasta la punta de la pua, con la maquina parada y bloqueada. Es el radio EFECTIVO: hasta donde toca el cultivo, no hasta el tubo."
     },
 
-    "HALL02": {
-      "_que_es": "Sensor Hall en la rueda instrumentada",
-      "pulsos_por_vuelta": 8,
-      "pulsos_por_vuelta__medido": false,
-      "_como_medir_pulsos_por_vuelta": "Igual que HALL01: contar imanes y verificar con una vuelta completa.",
-
-      "circunferencia_rueda_m": 3.0,
-      "circunferencia_rueda_m__medido": false,
-      "_como_medir_circunferencia_rueda_m": "Marcar el neumatico con tiza, avanzar DIEZ vueltas completas EN CAMPO Y CON CARGA representativa, medir la distancia recorrida y dividir entre diez. Con la maquina vacia o sobre asfalto sale otro numero y la velocidad quedaria sesgada.",
-      "_advertencia": "Aunque este medida, la velocidad sigue siendo ESTIMADA POR RUEDA: el patinaje no se corrige con calibracion."
-    },
-
     "US01": {
-      "_que_es": "Ultrasonico A02YYUW del extremo izquierdo del cabezal",
+      "_que_es": "Ultrasonico RCWL-1655 (Trig/Echo) del extremo izquierdo del cabezal",
       "offset_b_mm": 200,
       "offset_b_mm__medido": false,
       "_como_medir_offset_b_mm": "Distancia en milimetros desde la CARA del sensor hasta el plano de la cuchilla, medida con el cabezal apoyado en el suelo. Es lo que se resta a la distancia cruda para obtener la altura.",
 
       "zona_ciega_mm": 30,
       "rango_max_mm": 4500,
-      "_nota_rango": "Valores de la ficha del fabricante para objeto plano. NO son garantia de lectura correcta sobre rastrojo, barro o vegetacion en pie."
+      "_nota_rango": "Valores provisionales: el RCWL-1655 no tiene hoja de datos oficial, asi que zona ciega y alcance hay que medirlos en el banco con cinta. Tampoco son garantia de lectura correcta sobre rastrojo, barro o vegetacion en pie."
     },
 
     "US02": {
-      "_que_es": "Ultrasonico A02YYUW del extremo derecho del cabezal",
+      "_que_es": "Ultrasonico RCWL-1655 (Trig/Echo) del extremo derecho del cabezal",
       "offset_b_mm": 200,
       "offset_b_mm__medido": false,
       "_como_medir_offset_b_mm": "Igual que US01, lado derecho. NO asumir que es el mismo numero: el montaje rara vez es simetrico.",
@@ -62,7 +50,7 @@
   "central": {
     "_que_es": "Constantes que usa la central para derivar lo que ningun nodo puede calcular solo",
     "tolerancia_emparejamiento_ms": 150,
-    "_nota_tolerancia": "Separacion maxima entre la muestra de NH01 y la de NH02 para que su emparejamiento cuente como simultaneo al calcular el reel index.",
+    "_nota_tolerancia": "Separacion maxima entre la muestra de velocidad del GPS (GPS01) y la de rpm del molinete (NH01) que se empareja con ella para calcular el reel index. La central busca la muestra de rpm mas cercana al instante de la del GPS.",
 
     "velocidad_minima_para_ri_mps": 0.3,
     "_nota_velocidad_minima": "Por debajo de esto el reel index se reporta como null con estado 'speed_too_low'. Dividir entre una velocidad casi nula produce numeros enormes y sin sentido.",

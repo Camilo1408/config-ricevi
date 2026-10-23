@@ -1,6 +1,6 @@
 # Configuración del punto de acceso
 
-La red que une los ocho nodos con la Raspberry Pi. **Es la parte del sistema que
+La red que une los siete nodos con la Raspberry Pi. **Es la parte del sistema que
 más fallos tontos produce**, y casi todos se evitan con esta lista.
 
 ## El número que decide qué equipo sirve
@@ -8,16 +8,18 @@ más fallos tontos produce**, y casi todos se evitan con esta lista.
 | Elemento | Estaciones Wi-Fi |
 |---|---|
 | Cuatro cámaras | 4 |
-| Cuatro nodos de sensor | 4 |
+| Tres nodos de sensor | 3 |
 | `HMI01` | 1 |
 | `RPI01`, si no va por cable | 1 |
-| **Total** | **9 o 10** |
+| **Total** | **8 o 9** |
+
+El GPS no usa la red: va por USB a la Pi.
 
 | Punto de acceso | Clientes que admite | ¿Sirve? |
 |---|---|---|
 | Router o AP dedicado | Decenas | **Sí, con holgura** |
 | Hotspot de Android | Hasta unos 10, según fabricante | Justo, sin margen |
-| Hotspot de iPhone | Unos 5, según modelo y operador | **No. No caben ocho nodos** |
+| Hotspot de iPhone | Unos 5, según modelo y operador | **No. No caben siete nodos** |
 
 **Para campo: router dedicado.** Es la única opción con margen y además deja
 libre el Wi-Fi de la Pi.
@@ -28,8 +30,8 @@ libre el Wi-Fi de la Pi.
 |---|---|---|
 | SSID | `RiceVi-M01` | Uno por máquina, para no confundir dos montajes |
 | Seguridad | WPA2-PSK | WPA3 puro puede no negociar con el ESP32 |
-| **Banda** | **Solo 2,4 GHz** | El ESP32-S3 **no tiene radio de 5 GHz**. En "automático" el nodo puede no ver la red, y el síntoma es idéntico al de una placa averiada |
-| **Canal** | **Fijo: 1, 6 u 11** | Un canal automático puede cambiar en marcha y desconectar a los ocho a la vez |
+| **Banda** | **Solo 2,4 GHz** | Ni el ESP32-S3 ni el ESP32-C6 **tienen radio de 5 GHz**. En "automático" el nodo puede no ver la red, y el síntoma es idéntico al de una placa averiada |
+| **Canal** | **Fijo: 1, 6 u 11** | Un canal automático puede cambiar en marcha y desconectar a los siete a la vez |
 | Ancho de canal | 20 MHz | 40 MHz en 2,4 GHz añade interferencia sin beneficio para este tráfico |
 | **Aislamiento de clientes** | **DESACTIVADO** | Si está activo, los nodos ven Internet pero **no ven a la Pi**. Es el fallo número uno y no da ningún mensaje de error |
 | *Band steering* | Desactivado | No tiene sentido con una sola banda y confunde a clientes simples |
@@ -52,10 +54,11 @@ Las MAC salen de `config/censo.py`, y se anotan al provisionar cada placa con
 | `CAM03` | `192.168.40.13` | *(anotar)* |
 | `CAM04` | `192.168.40.14` | *(anotar)* |
 | `NH01` | `192.168.40.21` | *(anotar)* |
-| `NH02` | `192.168.40.22` | *(anotar)* |
 | `NU01` | `192.168.40.23` | *(anotar)* |
 | `NU02` | `192.168.40.24` | *(anotar)* |
 | Diagnóstico | `.40`–`.99` | resto del rango DHCP |
+
+La `.22` era de `NH02`, el Hall de rueda que se retiró; queda libre.
 
 **Tenda N301:** solo acepta reservas **dentro** del rango del servidor DHCP. El rango va de `.2` a `.99` (Administración → Parámetros de LAN) y las reservas se crean en Avanzado → IP Estáticas en la LAN, en cuanto se conoce cada MAC.
 

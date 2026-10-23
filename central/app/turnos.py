@@ -3,7 +3,7 @@ turnos.py - Control de admision de subidas.
 
 POR QUE EXISTE
 --------------
-Ocho nodos comparten un unico canal de 2,4 GHz. Si las cuatro camaras suben a
+Siete nodos comparten un unico canal de 2,4 GHz. Si las cuatro camaras suben a
 la vez, no van cuatro veces mas rapido: compiten, colisionan, retransmiten, y
 las cuatro tardan mas que si hubieran ido en fila. Serializar las subidas es lo
 que convierte un medio compartido en un recurso previsible.

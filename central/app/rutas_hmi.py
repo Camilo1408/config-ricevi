@@ -24,7 +24,7 @@ import sys
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 
-from . import basedatos, config, fusion, inferencia, reloj, salud, seguridad, turnos
+from . import basedatos, config, fusion, gps, inferencia, reloj, salud, seguridad, turnos
 
 sys.path.insert(0, str(config.RAIZ))
 from config import censo  # noqa: E402
@@ -88,8 +88,8 @@ def estado():
             n["bateria_estado"] = ("critico" if mv < b["critico_mv"]
                                    else "aviso" if mv < b["aviso_mv"]
                                    else "ok")
-            # Porcentaje muy aproximado, lineal entre corte y plena carga. Una
-            # celda de Li-ion no es lineal, asi que sirve para ver la tendencia
+            # Porcentaje muy aproximado, lineal entre corte y plena carga. La
+            # descarga de una Ni-MH no es lineal, asi que sirve para ver la tendencia
             # y NO para decidir si llega a fin de jornada: para eso esta la
             # autonomia estimada del censo.
             corte = b["tension_corte_v"] * 1000
@@ -113,6 +113,7 @@ def estado():
                     "autonomia": {r: censo.autonomia_estimada(r)
                                   for r in censo.CONSUMO}},
         "estado_maquina": em,
+        "gps": gps.lector.estado(),
         "resultados": basedatos.resultado_por_camara(),
         "inferencia": inferencia.motor.estado(),
         "turnos": turnos.gestor.estado(),

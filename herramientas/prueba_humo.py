@@ -3,9 +3,10 @@ prueba_humo.py - Arranca la central en memoria y recorre el camino completo.
 
 QUE COMPRUEBA
 -------------
-Que el ciclo de arranque, el censo, la base, los turnos, la ingesta, la fusion
-y el HMI encajan entre si. No comprueba hardware ni red: para eso estan
-verificar_campo.py y los nodos reales.
+Que el ciclo de arranque, el censo, la base, los turnos, la ingesta, el GPS, la
+fusion y el HMI encajan entre si. No comprueba hardware ni red: para eso estan
+verificar_campo.py y los nodos reales. El GPS se alimenta con tramas NMEA
+escritas a mano, sin receptor.
 
 Se ejecuta en el portatil, sin Pi y sin ESP32, antes de copiar nada:
 
@@ -30,12 +31,15 @@ os.environ["RICEVI_DIR_DATOS"] = str(TMP)
 os.environ["RICEVI_EXIGIR_TOKEN"] = "0"
 os.environ["RICEVI_MODELO"] = "ninguno"
 os.environ["RICEVI_VIGILAR_TEMP"] = "0"
+# Sin receptor: el hilo no arranca y las tramas se inyectan a mano.
+os.environ["RICEVI_GPS"] = "0"
 
 sys.path.insert(0, str(RAIZ / "central"))
 sys.path.insert(0, str(RAIZ))
 
 from fastapi.testclient import TestClient  # noqa: E402
 
+from app import fusion, gps  # noqa: E402
 from app.main import app  # noqa: E402
 
 OK, FALLO = 0, 0
@@ -56,6 +60,14 @@ def jpeg_falso(n: int = 1200) -> bytes:
     prueba es el transporte y la integridad, no la decodificacion."""
     cuerpo = bytes((i * 7 + 13) % 256 for i in range(n))
     return b"\xff\xd8\xff\xe0" + cuerpo + b"\xff\xd9"
+
+
+def nmea(cuerpo: str) -> str:
+    """Una trama NMEA con su suma de verificacion."""
+    suma = 0
+    for ch in cuerpo:
+        suma ^= ord(ch)
+    return f"${cuerpo}*{suma:02X}"
 
 
 def main() -> int:
@@ -206,7 +218,7 @@ def main() -> int:
                   r.status_code == 201, r.text[:160])
 
         # Un nodo no puede publicar por un sensor ajeno.
-        ajeno = {**lote, "node_id": "NH02", "seq": 103, "muestras": [
+        ajeno = {**lote, "node_id": "NU01", "seq": 103, "muestras": [
             {"sensor_id": "HALL01", "magnitud": "reel_rpm", "seq": 103,
              "capture_mono_us": 1, "capture_session_us": 1, "ventana_us": 1,
              "valor": 1.0, "unidad": "rpm", "calidad": "buena",
@@ -215,12 +227,68 @@ def main() -> int:
         comprobar("un nodo no publica por un sensor ajeno", r.status_code == 409,
                   str(r.status_code))
 
+        # El GPS va conectado a la central: ningun nodo puede publicar por el.
+        por_gps = {**lote, "seq": 104, "muestras": [
+            {"sensor_id": "GPS01", "magnitud": "ground_speed", "seq": 104,
+             "capture_mono_us": 1, "capture_session_us": 1, "ventana_us": 1,
+             "valor": 1.0, "unidad": "m/s", "calidad": "buena",
+             "codigo_calidad": "ok"}]}
+        r = c.post("/v1/telemetry", json=por_gps)
+        comprobar("un nodo no publica por el GPS", r.status_code == 409,
+                  str(r.status_code))
+
+        # --- GPS --------------------------------------------------------------
+        # Tramas como las del VK-162: GGA (satelites, HDOP) y RMC (velocidad).
+        # 3,5 nudos = 1,80 m/s. La posicion es inventada y no se guarda.
+        L = gps.lector
+        gga = nmea("GPGGA,141500.00,0255.123,N,07517.456,W,1,09,0.9,450.0,M,8.0,M,,")
+        rmc = nmea("GPRMC,141500.00,A,0255.123,N,07517.456,W,3.500,90.0,221026,,,A")
+        L.procesar_linea(gga, ahora_us=6_000_000)
+        n = L.procesar_linea(rmc, ahora_us=6_050_000)
+        comprobar("una solucion del GPS guarda sus cuatro magnitudes", n == 4, str(n))
+        comprobar("el GPS convierte nudos a m/s",
+                  L.ultima and abs(L.ultima["ground_speed_mps"] - 1.8006) < 0.001,
+                  str(L.ultima))
+
+        malas = L.tramas_malas
+        L.procesar_linea(rmc[:-2] + "00", ahora_us=6_100_000)
+        comprobar("una trama con la suma mal se descarta y se cuenta",
+                  L.tramas_malas == malas + 1, str(L.tramas_malas))
+
+        sin_fix = nmea("GPRMC,141501.00,V,,,,,,,221026,,,N")
+        L.procesar_linea(sin_fix, ahora_us=7_050_000)
+        comprobar("sin solucion, la velocidad es NULA y no cero",
+                  L.ultima["ground_speed_mps"] is None
+                  and L.ultima["codigo"] == "sin_fix", str(L.ultima))
+
+        quieto = nmea("GPRMC,141506.00,A,0255.123,N,07517.456,W,0.150,,221026,,,A")
+        for k in range(4):
+            L.procesar_linea(quieto, ahora_us=12_050_000 + k * 1_000_000)
+        comprobar("parada: la filtrada vale 0 con codigo 'reposo'",
+                  L.ultima["ground_speed_filtrada_mps"] == 0.0
+                  and L.ultima["codigo"] == "reposo", str(L.ultima))
+
+        L.procesar_linea(rmc, ahora_us=16_050_000)
+        em = fusion.calcular_estado()
+        comprobar("la fusion toma la velocidad del GPS",
+                  em.get("ground_speed_mps") is not None
+                  and em.get("ground_speed_edad_ms") is not None, str(em)[:200])
+        comprobar("sin radio del molinete medido, el reel index es nulo",
+                  em.get("reel_index") is None and em.get("ri_estado") == "sin_calibrar",
+                  str(em.get("ri_estado")))
+
+        s = c.get("/api/status").json()
+        comprobar("el estado incluye el GPS",
+                  "gps" in s and s["gps"]["soluciones"] >= 7, str(s.get("gps"))[:160])
+        comprobar("el GPS no guarda la posicion",
+                  "lat" not in json.dumps(s["gps"]), str(s["gps"])[:160])
+
         # --- eventos ----------------------------------------------------------
         r = c.post("/v1/events", json={"node_id": "CAM02", "tipo": "latido"})
         comprobar("latido aceptado", r.status_code == 201, str(r.status_code))
 
         # --- bateria ----------------------------------------------------------
-        # Cada nodo lleva su propio paquete 18650: el estado viaja colgado del
+        # Cada nodo lleva su propio juego de pilas: el estado viaja colgado del
         # latido, sin peticiones adicionales.
         r = c.post("/v1/events", json={"node_id": "CAM02", "tipo": "latido",
                                        "bateria_mv": 5200, "rssi_dbm": -58,
@@ -258,8 +326,8 @@ def main() -> int:
         r = c.get("/api/status")
         comprobar("/api/status responde", r.status_code == 200, str(r.status_code))
         s = r.json()
-        comprobar("el estado lista los ocho nodos esperados",
-                  len(s["nodos"]) + len(s["nodos_ausentes"]) == 8,
+        comprobar("el estado lista los siete nodos esperados",
+                  len(s["nodos"]) + len(s["nodos_ausentes"]) == 7,
                   f"{len(s['nodos'])} vistos + {len(s['nodos_ausentes'])} ausentes")
         comprobar("el motor esta en modo 'sin-modelo'",
                   s["inferencia"]["modelo"] == "sin-modelo", str(s["inferencia"]))

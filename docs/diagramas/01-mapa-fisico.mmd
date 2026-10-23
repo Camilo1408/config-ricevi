@@ -8,12 +8,9 @@ flowchart TB
     NU2["NU02<br/>altura der."]
     NH1["NH01<br/>molinete"]
   end
-  subgraph MAQ["Tolva y chasis"]
-    direction LR
-    C4["CAM04 superficie<br/>+ LED con batería de 9 V"]
-    NH2["NH02<br/>rueda"]
-  end
+  C4["CAM04 · tolva<br/>superficie + LED con batería de 9 V"]
   CABEZAL -.->|"Wi-Fi"| AP["AP01 · Tenda N301<br/>2,4 GHz · 9 V · a la sombra"]
-  MAQ -.->|"Wi-Fi"| AP
+  C4 -.->|"Wi-Fi"| AP
   HMI["HMI01<br/>tablet en cabina"] -.->|"Wi-Fi"| AP
   AP ===|"Ethernet"| RPI["RPI01 · cabina<br/>Raspberry Pi 5 8 GB · SSD NVMe 128 GB<br/>batería LiFePO4 12 V, compartida con AP01"]
+  GPS["GPS01 · VK-162<br/>techo de la cabina"] ===|"USB"| RPI

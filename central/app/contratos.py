@@ -21,7 +21,7 @@ Solo `Muestra`, y por tres motivos que el hardware real impone:
      (geometria, vegetacion). Son dos averias distintas con dos soluciones distintas.
 
 Los campos nuevos son OPCIONALES, asi que un nodo que aun hable 1.0 valida sin
-tocarlo. Eso permite actualizar el firmware de ocho nodos de uno en uno.
+tocarlo. Eso permite actualizar el firmware de siete nodos de uno en uno.
 """
 
 from __future__ import annotations
@@ -317,8 +317,8 @@ class Evento(BaseModel):
     # Estado del nodo, que viaja colgado del latido. Cuesta unos octetos y cero
     # peticiones adicionales.
     #
-    # POR QUE `bateria_mv` NO ES OPCIONAL DE VERDAD: con ocho nodos alimentados
-    # por paquetes 18650 independientes, saber cual esta a punto de quedarse sin
+    # POR QUE `bateria_mv` NO ES OPCIONAL DE VERDAD: con siete nodos alimentados
+    # por pilas independientes, saber cual esta a punto de quedarse sin
     # energia es lo que evita perder una vista a mitad de jornada sin aviso. Es
     # `None` solo para nodos que aun no lo implementen.
     bateria_mv: int | None = Field(default=None, ge=0, le=6000)

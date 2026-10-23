@@ -24,8 +24,14 @@ LA COLUMNA `grupo` ES LA MAS IMPORTANTE
 Separar entrenamiento, validacion y prueba AL AZAR sobre estos datos da
 metricas infladas y falsas: dos frames consecutivos de la misma pasada son casi
 la misma imagen, y si uno cae en entrenamiento y otro en prueba, el modelo ya
-ha visto la respuesta. La division tiene que hacerse POR GRUPO -- lote, jornada
-y pasada -- y esta columna es la que lo permite.
+ha visto la respuesta. La division tiene que hacerse POR GRUPO, y esta columna
+es la que lo permite.
+
+Un grupo es la JORNADA, identificada por su fecha local (decision C29). No la
+pasada: dos pasadas del mismo lote con minutos de diferencia siguen siendo casi
+la misma imagen. Y tampoco el session_id: si la central se reinicia a mitad del
+dia, al cambiar la bateria por ejemplo, abre una sesion nueva y partiria la
+jornada entre entrenamiento y prueba.
 """
 
 from __future__ import annotations
@@ -36,6 +42,7 @@ import json
 import os
 import sqlite3
 import sys
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent.parent
@@ -44,13 +51,27 @@ from config import censo  # noqa: E402
 
 DATOS = Path(os.getenv("RICEVI_DIR_DATOS", "/datos/ricevi"))
 
+# Colombia no cambia de hora: UTC-5 todo el ano.
+HORA_LOCAL = timezone(timedelta(hours=-5))
+
+
+def fecha_jornada(inicio_utc: str) -> str:
+    """La fecha local de la jornada, que es el grupo del dataset."""
+    try:
+        t = datetime.fromisoformat(inicio_utc.replace("Z", "+00:00"))
+        if t.tzinfo is None:
+            t = t.replace(tzinfo=timezone.utc)
+        return t.astimezone(HORA_LOCAL).date().isoformat()
+    except (ValueError, AttributeError):
+        return "sin-fecha"
+
 CAMPOS = [
     "frame_id", "session_id", "camera_id", "tarea", "grupo",
     "capture_utc", "capture_session_us", "utc_quality", "sync_uncertainty_ms",
     "ruta_relativa", "bytes", "sha256", "ancho", "alto", "jpeg_calidad",
     "roi_version", "roi",
     "reel_rpm", "reel_rpm_edad_ms",
-    "wheel_speed_mps", "wheel_speed_edad_ms",
+    "ground_speed_mps", "ground_speed_edad_ms",
     "altura_izq_mm", "altura_izq_edad_ms",
     "altura_der_mm", "altura_der_edad_ms",
     "altura_media_mm", "reel_index", "ri_estado",
@@ -86,6 +107,14 @@ def main() -> int:
         print(f"La sesion {a.sesion} no tiene frames")
         return 1
 
+    ses = con.execute("SELECT inicio_utc, acta_json FROM sesiones WHERE session_id=?",
+                      (a.sesion,)).fetchone()
+    grupo = fecha_jornada(ses["inicio_utc"] if ses else "")
+    if ses and '"utc_quality": "desconocida"' in (ses["acta_json"] or ""):
+        print("AVISO: la sesion se abrio sin hora civil fiable (sin RTC ni NTP). "
+              f"El grupo '{grupo}' puede no ser la fecha real de la jornada: "
+              "revisalo a mano antes de dividir.")
+
     tol_us = int(a.tolerancia_ms * 1000)
     filas: list[dict] = []
     sin_contexto = 0
@@ -96,22 +125,17 @@ def main() -> int:
         # Contexto operativo mas cercano dentro de la tolerancia.
         e = con.execute(
             """SELECT * FROM estado_maquina
-                WHERE session_us BETWEEN ? AND ?
+                WHERE session_id=? AND session_us BETWEEN ? AND ?
              ORDER BY ABS(session_us - ?) LIMIT 1""",
-            (f["capture_session_us"] - tol_us,
+            (a.sesion, f["capture_session_us"] - tol_us,
              f["capture_session_us"] + tol_us,
              f["capture_session_us"])).fetchone()
         em = dict(e) if e else {}
         if not em:
             sin_contexto += 1
 
-        # El grupo. Sin pass_id explicito se usa el boot del nodo como
-        # aproximacion de "tramo continuo de trabajo": es lo que hay, y es mejor
-        # que no agrupar nada. Cuando el HMI registre pasadas, esto mejora solo.
-        grupo = f"{a.sesion}-{f['camera_id']}-{f['boot_id']}"
-
         completo = all(em.get(c) is not None for c in
-                       ("reel_rpm", "wheel_speed_mps",
+                       ("reel_rpm", "ground_speed_mps",
                         "altura_izq_mm", "altura_der_mm"))
 
         filas.append({
@@ -128,8 +152,8 @@ def main() -> int:
             "roi": json.dumps(plan.get("roi", [])),
             "reel_rpm": em.get("reel_rpm"),
             "reel_rpm_edad_ms": em.get("reel_rpm_edad_ms"),
-            "wheel_speed_mps": em.get("wheel_speed_mps"),
-            "wheel_speed_edad_ms": em.get("wheel_speed_edad_ms"),
+            "ground_speed_mps": em.get("ground_speed_mps"),
+            "ground_speed_edad_ms": em.get("ground_speed_edad_ms"),
             "altura_izq_mm": em.get("altura_izq_mm"),
             "altura_izq_edad_ms": em.get("altura_izq_edad_ms"),
             "altura_der_mm": em.get("altura_der_mm"),
@@ -201,7 +225,9 @@ def main() -> int:
                  "frames consecutivos de la misma pasada son casi la misma "
                  "imagen; si uno cae en entrenamiento y otro en prueba, el "
                  "modelo ya ha visto la respuesta y las metricas salen "
-                 "infladas.\n\n")
+                 "infladas. El grupo es la fecha de la jornada: al juntar "
+                 "varias sesiones, las de la misma fecha van al mismo lado, y "
+                 "una jornada entera se reserva para prueba.\n\n")
         fh.write("```python\nfrom sklearn.model_selection import GroupShuffleSplit\n"
                  "# usar manifiesto['grupo'] como `groups`\n```\n\n")
 

@@ -49,7 +49,7 @@ void Nodo::led(uint8_t r, uint8_t g, uint8_t b) {
 }
 
 uint32_t Nodo::conJitter(uint32_t ms) const {
-  // Sin jitter, ocho nodos que pierden la red a la vez reintentan en el mismo
+  // Sin jitter, siete nodos que pierden la red a la vez reintentan en el mismo
   // milisegundo y reproducen la colision que el retroceso queria evitar.
   return ms + (uint32_t)random(0, RICEVI_RETROCESO_JITTER_MS);
 }
@@ -507,7 +507,7 @@ void Nodo::atender() {
 
   // Le toca sincronizar cuando el ciclo pasa por su ranura. El escalonado lo
   // asigna la central, no el firmware: asi se puede reordenar sin reflashear
-  // ocho placas.
+  // siete placas.
   uint32_t cicloMs = (uint32_t)(cicloSyncS_ * 1000);
   uint32_t fase = (uint32_t)(ahora % cicloMs);
   uint32_t miFase = (uint32_t)(ranuraOffsetS_ * 1000);
@@ -521,7 +521,7 @@ void Nodo::atender() {
     enviarEvento("latido", String("rssi=") + WiFi.RSSI());
     ultimoLatidoMs_ = ahora;
 
-    // Aviso UNA sola vez por cruce de umbral, no en cada latido: ocho nodos
+    // Aviso UNA sola vez por cruce de umbral, no en cada latido: siete nodos
     // repitiendo el mismo evento cada diez segundos ahogarian la tabla de
     // eventos justo cuando hace falta leerla.
     if (mv > 0 && mv < avisoMv_ && !avisoBateriaEnviado_) {
@@ -700,7 +700,7 @@ int Nodo::enviarEvento(const char* tipo, const String& detalle) {
   d["node_id"] = nodeId_;
   d["tipo"] = tipo;
   d["detalle"] = detalle;
-  // El estado del nodo viaja colgado de cualquier evento. Con ocho paquetes de
+  // El estado del nodo viaja colgado de cualquier evento. Con siete juegos de
   // bateria independientes, saber cual se esta agotando es lo que evita perder
   // una vista a mitad de jornada sin aviso.
   if (ultimaBateriaMv_ > 0) d["bateria_mv"] = ultimaBateriaMv_;

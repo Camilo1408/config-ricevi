@@ -1,13 +1,17 @@
-# Firmware de los ocho nodos
+# Firmware de los siete nodos
 
-**Tres binarios, no ocho.** Las cuatro cámaras corren exactamente el mismo
+**Tres binarios, no siete.** Las cuatro cámaras corren exactamente el mismo
 código y solo se distinguen por lo que tienen grabado en NVS.
 
 | Binario | Nodos | Carpeta |
 |---|---|---|
 | Cámara | `CAM01` `CAM02` `CAM03` `CAM04` | `camara/` |
-| Hall | `NH01` `NH02` | `hall/` |
+| Hall | `NH01` | `hall/` |
 | Ultrasónico | `NU01` `NU02` | `ultrasonico/` |
+
+La velocidad de avance no tiene firmware: la mide un GPS USB conectado a la Pi
+(`central/app/gps.py`). Hasta octubre de 2026 la estimaba `NH02`, un Hall en la
+rueda que corría este mismo binario; se retiró y su placa queda de repuesto.
 
 **Por qué así.** Con un binario por nodo, copiar el equivocado convierte a
 `CAM03` en `CAM02`. El síntoma sería un `409` en la central que nadie sabría
@@ -55,7 +59,9 @@ Partition Scheme    Huge APP           <- con la partición por defecto, Hall y
 ```
 
 Se programan por el USB-C del conversor CH343 (en Linux aparece como
-`/dev/ttyACM0`).
+`/dev/ttyACM0`). **Si el GPS está enchufado a la Pi**, él también es un
+`ttyACM`: elige el puerto de la placa en `/dev/serial/by-id/` o desconecta el GPS
+mientras provisionas.
 
 | Nodo | Pines de la ESP32-C6 |
 |---|---|
@@ -112,8 +118,8 @@ El script escribe `node_id`, `token`, SSID, contraseña e IP de la central en la
 NVS, e imprime la MAC. **Copia esa MAC a `config/censo.py`**: sin ella no se
 puede crear la reserva DHCP.
 
-Y **pega la etiqueta en la caja antes de montarla**. Ocho placas iguales dentro
-de ocho cajas atornilladas a una cosechadora son indistinguibles, y averiguar
+Y **pega la etiqueta en la caja antes de montarla**. Siete placas iguales dentro
+de siete cajas atornilladas a una cosechadora son indistinguibles, y averiguar
 cuál es `NU01` desmontándolas es una tarde perdida.
 
 ## El código de colores del LED

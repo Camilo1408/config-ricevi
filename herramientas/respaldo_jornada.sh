@@ -76,7 +76,7 @@ rsync -a --info=progress2 \
       "${DATOS}/frames/${SESION}" "${CARPETA}/frames/"
 cp "${DATOS}/ricevi.db" "${CARPETA}/"
 # Los tokens viajan con el respaldo: perderlos cuesta volver a provisionar los
-# ocho nodos, y conservarlos no cuesta nada.
+# siete nodos, y conservarlos no cuesta nada.
 [[ -f "${DATOS}/tokens.json" ]] && cp "${DATOS}/tokens.json" "${CARPETA}/"
 # Y la configuracion con la que se capturo: sin ella, dentro de tres meses no
 # se sabra que ROI ni que calibracion habia ese dia.

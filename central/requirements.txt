@@ -15,6 +15,10 @@ python-multipart==0.0.9
 psutil==6.0.0
 jinja2==3.1.4
 
+# El GPS de la velocidad de avance (central/app/gps.py) y la provision de los
+# nodos desde la Pi (herramientas/provisionar_nodo.py) leen puertos serie.
+pyserial==3.5
+
 # Solo para la fase de inferencia. En la fase de dataset no se importan, asi
 # que la central arranca aunque no esten.
 #   numpy y opencv los necesita modelos/ncnn_segmentacion.py

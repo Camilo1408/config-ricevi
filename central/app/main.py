@@ -9,7 +9,7 @@ EL ORDEN DE ARRANQUE IMPORTA
   2. Crear directorios y comprobar espacio.
   3. Cargar los tokens.
   4. Abrir la base y escribir el ACTA de la sesion, avisos incluidos.
-  5. Arrancar salud -> fusion -> inferencia.
+  5. Arrancar salud -> GPS -> fusion -> inferencia.
   6. Solo entonces empezar a aceptar nodos.
 
 El paso 4 antes que el 6 no es casual: si un frame llegara antes de que exista
@@ -28,7 +28,7 @@ from datetime import datetime
 
 from fastapi import FastAPI
 
-from . import (basedatos, config, fusion, inferencia, reloj, rutas_hmi,
+from . import (basedatos, config, fusion, gps, inferencia, reloj, rutas_hmi,
                rutas_ingesta, rutas_nodos, salud, seguridad)
 
 sys.path.insert(0, str(config.RAIZ))
@@ -119,6 +119,7 @@ async def ciclo_vida(app: FastAPI):
 
     # --- 5. Hilos -----------------------------------------------------------
     salud.salud.arrancar()
+    gps.lector.arrancar(session_id)
     fusion.fusionador.arrancar(session_id)
     inferencia.motor.arrancar(session_id)
 
@@ -134,6 +135,7 @@ async def ciclo_vida(app: FastAPI):
     log.info("Parando...")
     inferencia.motor.parar()
     fusion.fusionador.parar()
+    gps.lector.parar()
     salud.salud.parar()
     basedatos.guardar_evento("RPI01", "sesion_fin", session_id,
                              reloj.session_us(), reloj.utc_iso())

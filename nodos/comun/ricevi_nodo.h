@@ -1,5 +1,5 @@
 /*
- * ricevi_nodo.h - El firmware compartido por los ocho nodos.
+ * ricevi_nodo.h - El firmware compartido por los siete nodos.
  *
  * Es la traduccion a C++ de lo que en el banco de pruebas era `comun.py`: la
  * misma logica de registro, cuatro tiempos, turno y reintento, contra los

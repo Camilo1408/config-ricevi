@@ -1,9 +1,11 @@
 flowchart TD
-  S(["Fenómeno físico:<br/>imán, eco, escena"]) --> N["Nodo ESP32-S3<br/>mide, marca el instante<br/>y firma con SHA-256"]
+  S(["Fenómeno físico:<br/>imán, eco, escena"]) --> N["Nodo ESP32-S3 o C6<br/>mide, marca el instante<br/>y firma con SHA-256"]
   N -->|"Wi-Fi 2,4 GHz"| AP["AP01"]
   AP -->|"Ethernet"| I["Ingesta en la Pi<br/>valida token, hash y contrato"]
   I --> D[("SSD: JPEG original<br/>byte a byte")]
   I --> BD[("SQLite: frames,<br/>telemetría, eventos")]
+  G(["Satélites"]) --> GPS["GPS01 por USB en la Pi<br/>solo la velocidad"]
+  GPS --> BD
   I -->|"201 al nodo<br/>sin esperar al modelo"| N
   I -.->|"cola acotada"| M["Inferencia<br/>solo si hay modelo"]
   M --> BD

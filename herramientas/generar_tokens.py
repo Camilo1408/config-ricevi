@@ -3,18 +3,18 @@ generar_tokens.py - Un token por nodo, generado una sola vez.
 
     python herramientas/generar_tokens.py                  crea los que falten
     python herramientas/generar_tokens.py --rotar CAM02    renueva uno
-    python herramientas/generar_tokens.py --rotar-todos    renueva los ocho
+    python herramientas/generar_tokens.py --rotar-todos    renueva los siete
 
 POR QUE EL ARCHIVO NO VA AL REPOSITORIO
 ---------------------------------------
 Se escribe en el directorio de datos, no en el proyecto. Si estuviera
-versionado, el primer `git push` publicaria las credenciales de los ocho nodos,
+versionado, el primer `git push` publicaria las credenciales de los siete nodos,
 y a partir de ahi cualquiera con acceso al repositorio podria inyectar datos en
 el dataset.
 
 QUE PASA SI SE PIERDE
 ---------------------
-Hay que regenerarlo y volver a provisionar los ocho nodos. Molesto, no grave.
+Hay que regenerarlo y volver a provisionar los siete nodos. Molesto, no grave.
 Por eso el archivo se copia junto al respaldo de cada jornada: conservarlo
 cuesta nada y perderlo cuesta una tarde de provisiones.
 """

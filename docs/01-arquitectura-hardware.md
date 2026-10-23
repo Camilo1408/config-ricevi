@@ -1,7 +1,7 @@
 # Arquitectura y configuración del sistema RiceVi
 
 **Documento de diseño · hardware, red y flujo de datos**
-Versión 1.2 — 22 de octubre de 2026
+Versión 1.3 — 23 de octubre de 2026
 
 Este documento describe el sistema completo tal como va montado en la
 cosechadora: qué hardware lo compone, cómo se alimenta, cómo se comunica, cómo
@@ -28,12 +28,20 @@ cada uno indica cómo comprobarlo.
 > de la tolva es un módulo de inyección de 12 V con su propia batería de 9 V
 > (§2, §3, §4.2, §5, §9, §10, §11).
 
+> **Cambios de la versión 1.3 (velocidad por GPS).** La velocidad de avance ya no
+> sale de un Hall en la rueda: la mide un **receptor GPS USB VK-162** (u-blox 7)
+> conectado a la Pi, con la antena en el **techo de la cabina**. Sale el nodo
+> `NH02` y quedan **siete** ESP32. La velocidad pasa de estimada a medida sobre
+> el suelo, sin patinaje ni circunferencia que medir, y el *reel index* se
+> calcula con ella. La posición que entrega el receptor **no se guarda**
+> (§2, §4.1, §5.3, §5.4, §6, §9, §10, §11).
+
 ---
 
 ## 1 · Qué hace el sistema y en qué dos fases
 
 RiceVi observa la operación de una cosechadora de arroz —el corte y lo que llega
-a la tolva— con cuatro cámaras y cuatro sensores, guarda esa observación de
+a la tolva— con cuatro cámaras, tres sensores y un receptor GPS, guarda esa observación de
 forma trazable, y —cuando existan modelos entrenados— la analiza a bordo para
 dar retroalimentación al operario.
 
@@ -52,7 +60,7 @@ seguirlas reduzca las pérdidas, porque eso exigiría un experimento controlado.
 | PRE-CORTE | Cultivo antes de entrar al cabezal | Clase de acame: erecto, moderado, severo |
 | POST-CORTE | Franja recién cortada | Fracción visual de material útil residual |
 | TOLVA | Superficie del material acumulado | Fracción visual de material no grano |
-| Operación | Molinete, rueda y distancia al suelo | RPM, velocidad estimada, alturas, *reel index* |
+| Operación | Molinete, avance y distancia al suelo | RPM, velocidad sobre el suelo (GPS), alturas, *reel index* |
 
 La trilla queda fuera del alcance actual. Si más adelante sobra tiempo, podría
 añadirse etiquetando grano partido sobre las mismas fotos de la tolva, sin
@@ -95,17 +103,22 @@ el recorrido: en el contrato, en la base de datos y en la pantalla.
 | `CAM03` | GOOUUU ESP32-S3-CAM (N16R8) con OV3660 | Detrás del cabezal, derecha | Resultado del corte |
 | `CAM04` | GOOUUU ESP32-S3-CAM (N16R8) con OV3660 + LED pulsado | Interior de la tolva | Superficie del material acumulado |
 | `NH01` | ESP32-C6 DevKitC + Hall HW-477 (A3144) | Eje del molinete | Pulsos → RPM |
-| `NH02` | ESP32-C6 DevKitC + Hall HW-477 (A3144) | Rueda instrumentada | Pulsos → velocidad estimada |
 | `NU01` | ESP32-C6 DevKitC + RCWL-1655 | Extremo izquierdo del cabezal | Distancia → altura de cuchilla |
 | `NU02` | ESP32-C6 DevKitC + RCWL-1655 | Extremo derecho del cabezal | Distancia → altura de cuchilla |
+| `GPS01` | Receptor GPS USB VK-162 (u-blox 7) | Techo de la cabina, cable USB a `RPI01` | Velocidad de avance sobre el suelo |
 
 Más dos equipos de apoyo: `AP01`, el punto de acceso Wi-Fi de 2,4 GHz (un
 router Tenda N301), y `HMI01`, una tablet o teléfono con un navegador.
 
-**Ocho microcontroladores, uno por punto de captura.** Cada sensor y cada cámara
+**Siete microcontroladores, uno por punto de captura.** Cada sensor y cada cámara
 tiene su propio ESP32 junto a él: ESP32-S3 en las cámaras, porque necesitan la
 PSRAM para el JPEG, y ESP32-C6 en los sensores. El firmware es el mismo para
 las dos familias; los pines cambian con `CONFIG_IDF_TARGET_ESP32C6`.
+
+**El GPS no lleva microcontrolador.** Va por USB a la Pi, que lo lee
+directamente: comparte el reloj de la central, no ocupa la red y no tiene
+batería que vigilar (§5.3). Hasta la versión 1.2 había un octavo nodo, `NH02`,
+con un Hall en la rueda; su placa ESP32-C6 queda de repuesto.
 
 | Nodo | Señal | Pines de la ESP32-C6 |
 |---|---|---|
@@ -123,9 +136,9 @@ las dos familias; los pines cambian con `CONFIG_IDF_TARGET_ESP32C6`.
 | Montaje independiente | Cada caja se ubica donde conviene mecánicamente |
 | Firmware simple | Cada nodo hace una cosa. El conteo de pulsos no comparte CPU con la medida de eco del ultrasónico |
 
-El coste es que hay nueve estaciones Wi-Fi compartiendo un canal, nueve relojes
-que sincronizar y nueve paquetes de batería que vigilar. Las tres cosas están
-resueltas y se explican en las secciones 4, 6 y 3.
+El coste es que hay ocho estaciones Wi-Fi compartiendo un canal (los siete nodos
+y el HMI), siete relojes que sincronizar y siete juegos de pilas que vigilar.
+Las tres cosas están resueltas y se explican en las secciones 4, 6 y 3.
 
 ### 2.3 La central
 
@@ -135,6 +148,7 @@ resueltas y se explican en las secciones 4, 6 y 3.
 | Almacenamiento | SSD NVMe por PCIe en un HAT M.2; hoy de 128 GB, y la Pi arranca desde él | A 1 imagen/s por cámara son ~17 GB por jornada: una microSD ni tiene capacidad ni aguanta esa escritura a diario |
 | Sistema de archivos | ext4 con *journaling* | Recuperación fiable ante un corte, a diferencia de FAT |
 | Reloj | RTC con batería | Da hora civil fiable sin Internet. Sin él, los datos quedan marcados `utc_quality: desconocida` |
+| GPS | Receptor USB VK-162 (u-blox 7) con antena integrada y base magnética, en el techo de la cabina | Mide la velocidad de avance sobre el suelo. Se lee por USB, sin `gpsd` ni servicios añadidos (§5.3) |
 | Refrigeración | Disipador con ventilador activo | Bajo carga sostenida el SoC se estrangula a partir de 80 °C |
 | Acelerador de IA | **Ninguno** | Decisión del proyecto. La sección 7.3 explica el presupuesto de CPU y el escalonado térmico que lo hace viable |
 
@@ -248,7 +262,7 @@ Medidas concretas:
 |---|---|
 | Fuente | **Batería LiFePO4 de 12,8 V y 12 Ah** (≈ 150 Wh) con BMS, compartida con `AP01` |
 | Conversión | Convertidor 12 V → 5 V con salida USB-C de **5 A** para la Pi; un segundo convertidor 12 V → 9 V para el router Tenda N301 |
-| Consumo típico | ≈ 9–12 W al 70 % de CPU con NVMe y Ethernet *(estimado)*; menos en fase de dataset, que no infiere |
+| Consumo típico | ≈ 9–12 W al 70 % de CPU con NVMe y Ethernet *(estimado)*; menos en fase de dataset, que no infiere. El GPS añade unos 0,25 W desde un USB de la Pi *(estimado)*, holgado dentro de los 600 mA que permite la Pi sin PD |
 | Autonomía estimada | ≈ 12 h con la Pi y el AP en fase de dataset; menos en fase de inferencia |
 | Reserva local | 1000 µF electrolíticos más cerámicos junto a la Pi |
 | Protección | Fusible general junto a la batería, y uno por rama (Pi y router) |
@@ -354,6 +368,7 @@ entre ambos es cable, no radio.
 | Caja de `RPI01` | Rejillas con filtro de polvo, ventilador, montaje antivibración, acceso a conectores |
 | Caja de `AP01` | Estanca, antena orientada hacia los nodos, lo más alta posible, lejos de masas metálicas. Es un router Tenda N301 a 9 V; su alimentación baja de la batería de cabina, junto al cable Ethernet |
 | Batería de la central | LiFePO4 en cabina, a la sombra, sujeta y accesible para cambiarla sin herramientas |
+| GPS | Con su imán **en el techo de la cabina**, con cielo despejado y lejos de la antena del AP. El cable baja a un USB de la Pi por el mismo paso que el Ethernet, sujeto contra la vibración. Comprobar que el cable alcanza; si no, un alargador USB corto |
 | Cajas de cámara | Visor transparente limpiable, **sujeción mecánica del conector FPC**, orientación fijada y documentada |
 | LED de la tolva y su batería | El LED dentro, separado de la cámara y en oblicuo; **la batería de 9 V, fuera de la tolva** (§3.6) |
 | Cajas de sensor | Estancas, con prensaestopas y alivio de tensión |
@@ -368,7 +383,7 @@ entre ambos es cable, no radio.
 | SSID | `RiceVi-M01` | Uno por máquina |
 | Seguridad | WPA2-PSK | WPA3 puro puede no negociar con el ESP32 |
 | **Banda** | **Solo 2,4 GHz** | Ni el ESP32-S3 ni el ESP32-C6 **tienen radio de 5 GHz**. En «automático» el nodo no ve la red, y el síntoma es idéntico al de una placa averiada |
-| **Canal** | **Fijo: 1, 6 u 11** | Un canal automático puede cambiar en marcha y desconectar a los ocho a la vez |
+| **Canal** | **Fijo: 1, 6 u 11** | Un canal automático puede cambiar en marcha y desconectar a los siete a la vez |
 | Ancho | 20 MHz | 40 MHz en 2,4 GHz añade interferencia sin beneficio |
 | **Aislamiento de clientes** | **DESACTIVADO** | Si está activo, los nodos ven Internet pero **no ven a la Pi**. Es el fallo número uno y no da ningún mensaje de error |
 | DHCP | Con reservas por MAC | Direcciones fijas sin grabar nada en el nodo |
@@ -379,16 +394,18 @@ entre ambos es cable, no radio.
 | Elemento | Estaciones Wi-Fi |
 |---|---|
 | Cuatro cámaras | 4 |
-| Cuatro nodos de sensor | 4 |
+| Tres nodos de sensor | 3 |
 | `HMI01` | 1 |
 | `RPI01`, solo si no va por cable | 1 |
-| **Total** | **9 o 10** |
+| **Total** | **8 o 9** |
+
+El GPS no cuenta: va por USB a la Pi.
 
 | Punto de acceso | Clientes que admite | ¿Sirve? |
 |---|---|---|
 | Router o AP dedicado | Decenas | **Sí, con holgura** |
 | Hotspot de Android | Hasta unos 10, según fabricante | Justo, sin margen |
-| Hotspot de iPhone | Unos 5, según modelo y operador | **No. No caben ocho nodos** |
+| Hotspot de iPhone | Unos 5, según modelo y operador | **No. No caben siete nodos** |
 
 **Conclusión: router dedicado para campo.** El hotspot de un teléfono sirve para
 pruebas parciales con dos o tres nodos en el taller, y como plan de
@@ -444,12 +461,12 @@ capturar, el dataset queda partido en dos mitades que no se pueden comparar.
 | `machine_id` | `M01` | Fijo del proyecto | Si hay una segunda cosechadora |
 | `session_id` | `R001`, `R002`… | La central al arrancar | Una por jornada |
 | `node_id` | `CAM01`…`NU02` | El censo, grabado en NVS | **Nunca.** Es la identidad del equipo |
-| `sensor_id` | `HALL01`, `US01`… | El censo | **Nunca.** Sigue al sensor aunque cambie de placa |
+| `sensor_id` | `HALL01`, `US01`, `GPS01`… | El censo | **Nunca.** Sigue al sensor aunque cambie de placa |
 | `boot_id` | `B01`, `B02`… | El nodo | En cada arranque |
 | `seq` | Entero continuo | El nodo | Se reinicia solo con `boot_id` nuevo |
 | `frame_id` | `M01-R001-CAM02-B03-000036` | El nodo | Uno por imagen |
-| `config_version` | `cfg-campo-1.0.0` | La central | Al cambiar un parámetro que afecta a los datos |
-| `censo_version` | `censo-1.0.0` | El censo | Al cambiar una posición, una IP o una calibración |
+| `config_version` | `cfg-campo-1.1.0` | La central | Al cambiar un parámetro que afecta a los datos |
+| `censo_version` | `censo-1.1.0` | El censo | Al cambiar una posición, una IP o una calibración |
 
 ### 5.2 Tres reglas del `frame_id`
 
@@ -487,30 +504,53 @@ Cada nodo publica **lo que mide y lo que deriva, por separado**:
 |---|---|---|---|---|
 | `HALL01` | `pulsos_ventana` | count | No | Conteo directo del contador por hardware |
 | `HALL01` | `reel_rpm` | rpm | **Sí** | `60·N / (P·Δt)` |
-| `HALL02` | `pulsos_ventana` | count | No | Conteo directo |
-| `HALL02` | `wheel_speed` | m/s | **Sí** | `N·C / (P·Δt)` |
 | `US01` `US02` | `distance` | mm | No | Duración del eco del RCWL-1655 × velocidad del sonido / 2 |
 | `US01` `US02` | `header_height` | mm | **Sí** | `distance − offset_b_mm` |
+| `GPS01` | `ground_speed` | m/s | No | Velocidad sobre el suelo de la trama RMC: nudos × 0,5144 |
+| `GPS01` | `ground_speed_filtrada` | m/s | **Sí** | Media de los últimos 3 s; 0 por debajo de 0,2 m/s (`reposo`) |
+| `GPS01` | `satelites`, `hdop` | count, — | No | Trama GGA: calidad de la solución |
 
-**Por qué se guarda también la cruda.** Si dentro de tres meses se corrige la
-circunferencia efectiva de la rueda, con los pulsos guardados la velocidad de
-toda la campaña se recalcula. Sin ellos, hay que repetir la campaña. Los pulsos
-son el dato; las RPM son una interpretación del dato.
+**Por qué se guarda también la cruda.** Si dentro de tres meses se corrige el
+número de imanes del molinete, con los pulsos guardados las RPM de toda la
+campaña se recalculan. Sin ellos, hay que repetir la campaña. Los pulsos son el
+dato; las RPM son una interpretación del dato. Con el GPS pasa lo mismo: si se
+cambia el filtro, se recalcula desde `ground_speed`.
 
-**`wheel_speed` es una estimación, y hay que decirlo así.** La rueda patina, se
-hunde y deforma el neumático, y esos efectos cambian a lo largo de la jornada
-—con la humedad del suelo, los giros y el peso, que aumenta con cada tolvada—.
-Medir la circunferencia efectiva en campo y con carga corrige el valor medio,
-pero no la variación. No se instala GNSS, así que no hay una referencia
-independiente con la que contrastarla: la velocidad, y con ella el *reel index*,
-se publican como magnitudes estimadas y se analizan por tramos, no por valores
-puntuales.
+**La velocidad la mide el GPS.** El receptor la calcula con el desplazamiento
+Doppler de las señales de los satélites, que es mucho más estable que derivar
+posiciones sucesivas, y lo que mide es lo que la máquina avanza de verdad sobre
+el suelo. Desaparecen los dos problemas del Hall de rueda que se usó hasta la
+versión 1.2: el montaje en una rueda metida en agua y lodo, y el patinaje, que
+convertía la velocidad en una estimación sin referencia con la que
+contrastarla. La hoja del u-blox 7 da del orden de 0,1 m/s de precisión en
+velocidad; las correcciones SBAS que anuncia el receptor (WAAS/EGNOS) no cubren
+Colombia de forma fiable, pero la velocidad Doppler no depende de ellas.
 
-El *reel index* no lo calcula ningún nodo: `NH01` tiene las RPM y `NH02` la
-velocidad, cada uno en una placa distinta. Lo calcula la central emparejando las
-dos muestras más cercanas, y guarda **cuánto se separan en el tiempo**, porque
-un índice calculado con muestras separadas dos segundos no es el mismo dato que
-uno con veinte milisegundos.
+Lo que el GPS sí exige, y hay que vigilar:
+
+| Limitación | Consecuencia |
+|---|---|
+| Necesita ver el cielo | Bajo árboles, junto a un galpón o con la antena mal puesta pierde la solución. Entonces la velocidad es **nula** (`sin_fix`), nunca la última conocida |
+| Arranque en frío de uno o dos minutos | Hay que encenderlo al aire libre antes de empezar a capturar; `verificar_campo.py` no da el visto bueno sin solución |
+| A paso muy lento el Doppler tiembla | Por eso la filtrada promedia 3 s y publica 0 con la máquina detenida. El precio es un retraso de alrededor de un segundo y medio |
+| Una solución por segundo | El molinete manda diez muestras por segundo; el emparejamiento lo resuelve (abajo) |
+
+La validación en campo es corta: recorrer un tramo medido con cinta a ritmo
+constante y comparar con la media del GPS, y ver cuánto marca con la máquina
+detenida (manual de campo, §7.2).
+
+**La posición no se guarda.** La trama trae latitud y longitud; la central las
+usa solo para validar la trama y las descarta. En la base no queda dónde estaba
+el lote: el GPS del sistema solo mide la velocidad.
+
+El *reel index* no lo calcula ningún nodo: `NH01` tiene las RPM y el GPS la
+velocidad. Lo calcula la central con la última velocidad del GPS y la muestra
+de RPM **más cercana a ese instante**, y guarda **cuánto se separan en el
+tiempo**, porque un índice calculado con muestras separadas dos segundos no es
+el mismo dato que uno con veinte milisegundos. Como el GPS va en la propia
+central, su instante ya está en el reloj de la sesión: la única incertidumbre
+es la de la sincronía de `NH01`, más el retraso de la trama del receptor, que
+se declara en `sync_uncertainty_ms` (100 ms).
 
 ### 5.4 Calidad: la regla del nulo
 
@@ -529,6 +569,9 @@ Cada muestra lleva dos campos que hacen cosas distintas:
 | `eco_dudoso` | dudosa | Distancia plausible pero inestable |
 | `sin_calibrar` | inválida | Falta la constante para derivar la magnitud |
 | `saturado` | dudosa | Valor en el límite superior del rango |
+| `sin_fix` | inválida | El GPS no tiene solución: no hay velocidad |
+| `hdop_alto` | dudosa | GPS con geometría pobre (HDOP por encima de 5) |
+| `reposo` | buena | Velocidad por debajo de 0,2 m/s: máquina detenida, se publica 0 |
 
 **Por qué hacen falta los dos.** Una tasa de inválidas del 20 % con `calidad` a
 secas no se puede diagnosticar. Con el código se sabe si es `checksum` —cableado,
@@ -573,11 +616,11 @@ Ocho endpoints:
 **El nodo no decide casi nada.** El ritmo de captura, la resolución, el ROI, la
 ranura de reloj, los umbrales de batería y el ahorro de radio llegan en el plan.
 Cambiar el ritmo de una cámara es editar un archivo y reiniciar la central, no
-desmontar una caja del cabezal. Ocho veces.
+desmontar una caja del cabezal. Siete veces.
 
 ### 6.2 El turno de subida
 
-Ocho nodos comparten un canal. Si las cuatro cámaras suben a la vez no van
+Siete nodos comparten un canal. Si las cuatro cámaras suben a la vez no van
 cuatro veces más rápido: compiten, colisionan, retransmiten, y las cuatro tardan
 más que si hubieran ido en fila. El control de admisión serializa las subidas.
 
@@ -642,9 +685,9 @@ por su parte: no puede saber si llegó.
 | Tabla | Contenido |
 |---|---|
 | `sesiones` | El **acta**: instantánea completa de la configuración con la que se capturó |
-| `nodos` | Los ocho, con batería, RSSI y última vez vistos |
+| `nodos` | Los siete, con batería, RSSI y última vez vistos |
 | `frames` | Una fila por imagen, con ruta, hash y tiempos |
-| `telemetria` | Una fila por magnitud, con crudos y código de calidad |
+| `telemetria` | Una fila por magnitud, con crudos y código de calidad. Las del GPS llevan `node_id` `RPI01` y `sensor_id` `GPS01` |
 | `estado_maquina` | Estado operativo fusionado, con la edad de cada campo |
 | `resultados` | Una fila por inferencia, con modelo, versión y tiempos por etapa |
 | `eventos` | Arranques, cortes, batería baja, cambios de estado térmico |
@@ -680,10 +723,11 @@ ida/vuelta es menos falso.
 vuelta tardan lo mismo. En Wi-Fi eso es falso en general. Por eso cada registro
 lleva `sync_uncertainty_ms` y el desfase no se presenta como exacto.
 
-Los ocho nodos sincronizan **escalonados**, cada uno en su ranura de un ciclo de
+Los siete nodos sincronizan **escalonados**, cada uno en su ranura de un ciclo de
 30 segundos, para no producir una ráfaga periódica que compita con las imágenes.
 La ranura es fija por nodo: si se asignara por orden de llegada, un nodo que se
-reinicia caería en la ranura de otro.
+reinicia caería en la ranura de otro. El GPS no necesita sincronía: lo lee la
+propia central y lo sella con su reloj.
 
 ---
 
@@ -799,6 +843,7 @@ marcan *por confirmar*. **El total hay que recalcularlo** con la cotización.
 | 1 | HAT M.2 para NVMe (GeekPi N04) | US$ 15 |
 | 1 | SSD NVMe 128 GB | *por confirmar* |
 | 1 | Portapilas y pila CR2032 para el RTC | US$ 5 |
+| 1 | Receptor GPS USB VK-162 (u-blox 7) con base magnética | *por confirmar* |
 | 1 | microSD de 64 GB con el sistema, como copia de rescate | US$ 8 |
 | 1 | Caja ventilada con filtro y antivibración | US$ 25 |
 
@@ -807,21 +852,22 @@ marcan *por confirmar*. **El total hay que recalcularlo** con la cotización.
 | Cant. | Ítem | Ref. |
 |---:|---|---:|
 | 4 | GOOUUU ESP32-S3-CAM V1.5 (N16R8) con OV3660 | US$ 70 (dos paquetes de 3) |
-| 4 | ESP32-C6 DevKitC | *por confirmar* |
+| 4 | ESP32-C6 DevKitC (tres en uso; la de `NH02` queda de repuesto) | *por confirmar* |
 | — | Envío a Colombia | US$ 20 |
 | 2 | Ultrasónico RCWL-1655 | *por confirmar* |
-| 2 | Módulo Hall HW-477 (A3144) + imanes | US$ 22 |
-| 8 | Kit de 4 pilas AA Ni-MH + cargador | *por confirmar* |
-| 8 | Portapilas de 4 AA + fusible de 1 A + interruptor | *por confirmar* |
+| 2 | Módulo Hall HW-477 (A3144) + imanes (uno en el molinete, otro de repuesto) | US$ 22 |
+| 8 | Kit de 4 pilas AA Ni-MH + cargador (siete en uso, uno de recambio) | *por confirmar* |
+| 8 | Portapilas de 4 AA + fusible de 1 A + interruptor (siete en uso) | *por confirmar* |
 | — | Diodos 1N5819, resistencias de 10 kΩ, 150 kΩ y 100 kΩ, condensadores de 100 nF | *por confirmar* |
-| 8 | Caja IP65 con prensaestopas | US$ 56 |
+| 8 | Caja IP65 con prensaestopas (siete en uso) | US$ 56 |
 | 1 | Módulo LED de inyección de 12 V + referencia de color | US$ 20 |
 | 1 | MOSFET IRLZ44N, resistencias de 200 Ω y 100 kΩ, fusible de 1 A | US$ 10 |
 | 1 | Batería recargable de 9 V (PP3, 250 mAh) + cargador | *por confirmar* |
 | — | Cable, conectores y herrajes | US$ 60 |
 
-**Un juego de pilas por nodo.** Con 32 pilas no hay recambio cargado: un segundo
-juego, para trabajar dos jornadas seguidas sin esperar cargas, serían otras 32.
+**Un juego de pilas por nodo.** Con siete nodos en uso, de las 32 pilas sobra un
+juego de recambio. Un segundo juego completo, para trabajar dos jornadas
+seguidas sin esperar cargas, serían otras 28.
 
 ### 9.3 Red y energía
 
@@ -847,14 +893,14 @@ horas. La de 7 Ah se descartó porque no llegaba a una jornada.
 
 ## 10 · Lo que falta medir antes de publicar
 
-Cuatro constantes se miden con un metro, no con código. **El sistema captura
-dataset válido sin ellas**, porque guarda siempre la magnitud cruda, pero hasta
-que estén medidas y anotadas, `reel_rpm`, `wheel_speed`, `header_height` y
-`reel_index` **no se pueden publicar**.
+Cuatro constantes se miden a mano, no con código. **El sistema captura dataset
+válido sin ellas**, porque guarda siempre la magnitud cruda, pero hasta que
+estén medidas y anotadas, `reel_rpm`, `header_height` y `reel_index` **no se
+pueden publicar**. La velocidad del GPS no necesita ninguna.
 
 | Constante | Cómo se mide |
 |---|---|
-| `circunferencia_rueda_m` | Marcar el neumático, avanzar **diez vueltas en campo y con carga**, medir y dividir |
+| `pulsos_por_vuelta` de `HALL01` | Contar los imanes del eje del molinete y comprobar con una vuelta a mano que el nodo cuenta exactamente ese número |
 | `radio_molinete_m` | Del centro del eje a la **punta de la púa**, máquina parada y bloqueada |
 | `offset_b_mm` de `US01` | De la cara del sensor al plano de la cuchilla |
 | `offset_b_mm` de `US02` | Igual, lado derecho. **No asumir que es el mismo número** |
@@ -864,8 +910,9 @@ Y una comprobación que no es una constante sino una duda de fondo:
 | Comprobación | Cómo se hace |
 |---|---|
 | **Que los ultrasónicos midan hasta el suelo y no hasta el rastrojo** | Prueba con cinta descrita en el manual de campo, §7.1. Un eco devuelto por las puntas del rastrojo da una altura plausible, estable y en rango, que el sistema marcaría como `buena`. **Hasta que la prueba la valide, `header_height` no se publica** |
+| **Que el GPS mida bien la velocidad, sobre todo a paso lento** | Tramo medido con cinta, a ritmo constante, comparando con la media del GPS; y la máquina detenida, que debe dar 0 (manual de campo, §7.2) |
 
-Y ocho medidas de ingeniería que el documento da por estimadas:
+Y nueve medidas de ingeniería que el documento da por estimadas:
 
 | Medida | Cómo se comprueba |
 |---|---|
@@ -877,6 +924,7 @@ Y ocho medidas de ingeniería que el documento da por estimadas:
 | **Capacidad real de las pilas AA** | Descarga completa de un juego: la caja dice 3600 mAh y el cálculo usa 2600 |
 | **Luz y autonomía del LED a 9 V** | Banco: exposición de la foto con la batería llena y casi vacía |
 | **Zona ciega y tensión del RCWL-1655** | Banco, con cinta: no hay hoja de datos oficial |
+| **Tiempo hasta la primera solución y pérdidas de señal del GPS** | Una jornada completa, contando los tramos con `sin_fix` en `telemetria` |
 
 **Hasta que esas medidas estén hechas, las 11 horas de las cámaras (§3.2) y las
 12 de la central (§3.5) son cálculos, no hechos.**
@@ -889,13 +937,15 @@ Y ocho medidas de ingeniería que el documento da por estimadas:
 |---|---|
 | Un ESP32 por sensor y por cámara (S3 en cámaras, C6 en sensores) | Cables cortos, fallos aislados, firmware simple |
 | **Nada conectado a la máquina** | No hay que intervenir el cableado de una cosechadora ajena, ni pedir permiso para hacerlo |
-| Batería propia por nodo | Un fallo eléctrico de la máquina no apaga los ocho |
+| Batería propia por nodo | Un fallo eléctrico de la máquina no apaga los siete |
 | 4 AA Ni-MH directo al pin de 5 V | Pilas comunes y carga sencilla, sin elevador ni protección; a cambio, ≈ 11 h en las cámaras |
 | **LiFePO4 de 12 V para la central** | Una sola pieza de ≈ 150 Wh, tolerante al calor; desde 12 V la Pi y el router toman ≈ 1 A |
 | **LED de tolva pulsado, con batería propia de 9 V** | No toca las pilas de `CAM04`, y encenderlo solo durante la foto cuesta diez veces menos energía |
 | Ahorro de radio solo en sensores | Las cámaras pagan latencia; los sensores no, porque el instante viaja en la muestra |
+| **Velocidad por GPS USB, sin Hall de rueda** | El Hall no sobrevivía al agua y al lodo de la rueda, y la rueda patina. El GPS mide la velocidad sobre el suelo sin constantes que medir y sin un nodo más |
+| **La posición del GPS no se guarda** | Solo hace falta la velocidad; no queda registro de dónde está cada lote |
 | Central en cabina, AP fuera | La Pi quiere estar fresca, la antena cerca de los nodos |
-| Router dedicado (Tenda N301) y no celular | Un hotspot de iPhone no admite nueve estaciones |
+| Router dedicado (Tenda N301) y no celular | Un hotspot de iPhone no admite ocho estaciones |
 | SSD NVMe y no microSD | 15–17 GB por jornada, escritos a diario |
 | **Sin microSD en los nodos** | Todo va al SSD de la Pi; a cambio, si la Pi o el Wi-Fi caen, los frames de ese intervalo se pierden |
 | Sin acelerador de IA | Decisión de proyecto; la CPU basta con ritmos escalonados |

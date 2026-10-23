@@ -56,7 +56,7 @@ config-ricevi-campo/
 ├── modelos/         interfaz de modelo, el nulo y el de producción
 ├── nodos/           firmware de los siete ESP32 (S3 en cámaras, C6 en sensores)
 ├── herramientas/    instalación, provisión, verificación, respaldo y exportación
-└── docs/            estado del proyecto, diseño, configuración, manual y concurso
+└── docs/            estado del proyecto, diseño, configuración y manual de campo
 ```
 
 | Documento | Qué es |
@@ -65,7 +65,6 @@ config-ricevi-campo/
 | `docs/01-arquitectura-hardware.md` | Diseño: hardware, alimentación, red, datos y procesamiento |
 | `docs/02-configuracion-sistema.md` | Dónde vive cada ajuste y qué pasa si se cambia |
 | `docs/03-manual-de-campo.md` | Lo que se hace, en orden, en una jornada |
-| `docs/concurso/` | Postulación a NEIVA FEST Reto Innova 2026: resumen, cifras y fuentes |
 
 ## Puesta en marcha, en orden
 

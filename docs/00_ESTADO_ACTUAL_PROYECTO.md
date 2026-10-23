@@ -3,8 +3,8 @@
 **Última actualización:** 23 de octubre de 2026
 **Versión anterior:** `historico/00_ESTADO_ACTUAL_PROYECTO_2026-09-21c.md` (y las que esa cita)
 **Estatus:** prototipo en banco, fase 1 (dataset). Arquitectura **v1.3**: siete nodos ESP32 y la
-velocidad de avance por **GPS USB**. Postulado a **NEIVA FEST Reto Innova 2026** (22-oct). Próximo hito:
-montaje completo y primera salida a campo a mediados de noviembre (§9)
+velocidad de avance por **GPS USB**. Próximo hito: montaje completo y primera salida a campo a mediados
+de noviembre (§9)
 
 > Este archivo prevalece sobre cualquier otro documento del proyecto.
 > `Propuesta_Proyecto_de_Grado_v2.docx` sigue **congelado**; cuando se reabra, su título, pregunta,
@@ -19,8 +19,7 @@ montaje completo y primera salida a campo a mediados de noviembre (§9)
 2. **Velocidad por GPS (v1.3, 22–23-oct).** Sale el Hall de rueda `NH02`: la velocidad la mide un GPS
    USB VK-162 en la Pi, con la antena en el techo de la cabina. **C34–C36**; **C24 queda reemplazada**.
    Código, configuración, guías y diagramas actualizados en el repositorio.
-3. **Concurso.** RiceVi se postuló a NEIVA FEST Reto Innova 2026 con los anexos 2 a 5 y el pitch (§10).
-4. **Documentos.** Este archivo pasa al repositorio (`config-ricevi/docs/`), junto a los capítulos 01–03,
+3. **Documentos.** Este archivo pasa al repositorio (`config-ricevi/docs/`), junto a los capítulos 01–03,
    para que la fuente de verdad viaje con el código.
 
 ---
@@ -59,10 +58,6 @@ plataforma de medición de tiempos de inferencia (OE4). El HMI es herramienta de
 
 **No se afirmará en la tesis:** reducción de X kg/ha · que un ajuste causa una pérdida · haber encontrado el
 ajuste óptimo · control de la máquina · que seguir las sugerencias reduce pérdidas.
-
-*Nota sobre el concurso (§10):* allí las cifras de kg/ha y pesos se presentan como **escenarios
-calculados** sobre la pérdida de referencia del cabezal, no como resultados medidos. No cambian este
-límite: la tesis no las afirma hasta medirlas en campo.
 
 ---
 
@@ -104,7 +99,7 @@ límite: la tesis no las afirma hasta medirlas en campo.
 | **C32** | **LED de tolva pulsado, sincronizado con cada foto** | El encendido lo hace el ESP32 de `CAM04` con un MOSFET. La fuente cambió en C41 |
 | ~~**C33**~~ | ~~Fuente de cabina con paquetes de 18650~~ | **Reemplazada por C40** |
 | **C34** | **Velocidad de avance por GPS USB** *(22-oct)* | Receptor VK-162 (u-blox 7) en un USB de la Pi, antena magnética en el **techo de la cabina**. Velocidad Doppler sobre el suelo, sin patinaje ni constante que medir: deja de ser «estimada». Se lee directamente (sin `gpsd`), una solución por segundo, filtrada 3 s con umbral de reposo 0,2 m/s. Validación con tramo medido (manual de campo §7.2) |
-| **C35** | **La posición del GPS no se guarda** *(22-oct)* | La central descarta latitud y longitud al leer la trama. Es lo declarado en el concurso: «el GPS solo mide la velocidad»; la ubicación de los lotes es dato reservado del productor |
+| **C35** | **La posición del GPS no se guarda** *(22-oct)* | La central descarta latitud y longitud al leer la trama: el GPS solo mide la velocidad, y la ubicación de los lotes es dato reservado del productor |
 | **C36** | **Siete nodos ESP32** *(22-oct)* | Sale `NH02` (Hall de rueda: agua y lodo). `NH01` (molinete) y `NU01`/`NU02` (ultrasónicos, parte baja del cabezal) son nodos separados. La placa C6 de `NH02` (MAC `F0:F5:BD:0E:D7:30`) queda de repuesto y su IP `.22`, libre |
 | **C37** | **Nodos de sensor en ESP32-C6 DevKitC; ultrasónico RCWL-1655 (Trig/Echo); Hall HW-477** *(oct)* | Pines: Hall GPIO10; ultrasónico Trig GPIO11 · Echo GPIO10; batería GPIO1; LED GPIO8. Partición «Huge APP». La señal del Hall se toma de la pata OUT del A3144 (el pin S lleva el LED en serie) |
 | **C38** | **4 pilas AA Ni-MH en serie por nodo, directo al pin de 5 V** *(5-oct)* | Sin elevador ni placa de protección. Umbrales 4,50 V aviso / 4,35 V crítico, divisor 150k/100k en GPIO1 (aún sin montar: batería nula). Cámaras ≈ 11 h estimadas |
@@ -232,13 +227,11 @@ el mayor riesgo de calendario.
 | `config-ricevi-campo/` = repo `github.com/Camilo1408/config-ricevi` | **El sistema que va a la cosechadora** y su documentación vigente |
 | `config-ricevi-campo/docs/00_ESTADO_ACTUAL_PROYECTO.md` | **Fuente de verdad** (este archivo; copia en `PROYECTO/docs/`) |
 | `config-ricevi-campo/docs/01–03.md` | **Arquitectura v1.3** (23-oct). `.docx`/`.pdf` en `docs/entregables/`, generados con `herramientas/generar_documentos.ps1` |
-| `config-ricevi-campo/docs/concurso/` | Resumen de la postulación a NEIVA FEST (sin datos personales) |
 | `config-ricevi-campo/docs/historico/` | Versiones anteriores de este archivo |
 | `PROYECTO/docs/conexiones_nodos_y_central.html`, `puesta_en_marcha.html` | Páginas de cableado y de puesta en mesa (15–21-oct). **Todavía muestran `NH02`**, ahora con un aviso arriba: el cableado de `NH01`, `NU01`/`NU02` y cámaras sigue valiendo; lo de la rueda no |
 | `prubea-conex/` | Banco de simulación; sus medidas son de portátil y móviles, no de campo |
 | `sistema-arroz-front/` | Landing informativa (Vercel), ya con GPS y siete nodos |
 | `modelos-3d/` | Soporte 3D del nodo de cámara (FreeCAD, borrador) |
-| `Modalidad de Grado/Concurso/Diligenciados/` | Anexos 2–5 firmados (PDF) y pitch final. **Contienen datos personales: no se suben al repositorio** |
 | Raíz de `PROYECTO/`: `RiceVi_arquitectura_*.md/.docx/.pdf` | Histórico (septiembre) |
 | `Propuesta_Proyecto_de_Grado_v2.docx` | **Congelado** |
 
@@ -255,20 +248,3 @@ el mayor riesgo de calendario.
 4. **H8:** definir cómo se anotan y validan las tres tareas (acame, post-corte, tolva). Es el mayor riesgo de
    calendario.
 
----
-
-## 10. Concurso NEIVA FEST · Reto Innova 2026
-
-Postulación del 22 de octubre de 2026 a la Convocatoria Pública 001 de 2026 de la Fundación Es Entre
-Todos, ámbito económico. Iniciativa: **«RiceVi: diagnóstico con visión artificial del corte de la cosecha
-mecanizada de arroz»**. Representante: Ferley Medina Rojas (asesor). Desarrolladores: Cesar Camilo Hoyos
-Diaz y Alvaro Julian Delgado Mena (USCO, 9.º semestre).
-
-Resumen, cifras con sus fuentes, cronograma y plan del incentivo en **`docs/concurso/README.md`**. Lo que
-condiciona al proyecto:
-
-- **Compromisos públicos:** el GPS solo mide la velocidad (C35); el sistema no se conecta a la máquina (C26);
-  sin modelo no se muestra un número (C16); el dataset se divide por jornada (C29).
-- **Cronograma comprometido:** montaje hasta mediados de noviembre de 2026 → captura hasta diciembre →
-  etiquetado y entrenamiento noviembre–enero → primeras salidas con modelos enero–febrero de 2027.
-- **El anexo 2 cita 40 comprobaciones automáticas;** con el GPS hoy son 50.

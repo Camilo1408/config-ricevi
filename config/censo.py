@@ -268,7 +268,7 @@ PLANES: dict[str, dict] = {
 #
 # LA POSICION NO SE GUARDA. La central lee la latitud y la longitud solo para
 # validar la trama y las descarta: en la base no queda donde estaba el lote.
-# Es lo que se declaro en el concurso ("el GPS solo mide la velocidad").
+# El GPS del sistema solo mide la velocidad.
 #
 # `puerto`: "auto" busca en /dev/serial/by-id/ un dispositivo u-blox. NUNCA se
 # toma /dev/ttyACM0 a ciegas: la ESP32-C6 tambien aparece como ttyACM0 al

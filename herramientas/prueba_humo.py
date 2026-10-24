@@ -356,6 +356,17 @@ def main() -> int:
         r = c.post("/api/exportar")
         comprobar("exportacion a CSV", r.status_code == 200, r.text[:160])
 
+    # --- reinicios -------------------------------------------------------------
+    # Cada arranque es una sesion nueva, tambien si la anterior no guardo ningun
+    # frame. Sin camaras no se crea su carpeta y antes el id se repetia (R007).
+    with TestClient(app) as c:
+        sid2 = c.get("/salud").json()["session_id"]
+    with TestClient(app) as c:
+        sid3 = c.get("/salud").json()["session_id"]
+    comprobar("un reinicio abre una sesion nueva", sid2 != sid, f"{sid} -> {sid2}")
+    comprobar("un reinicio sin frames no repite la sesion",
+              sid3 not in (sid, sid2), f"{sid2} -> {sid3}")
+
     print(f"\n{OK} correctas, {FALLO} fallidas")
     if FALLO == 0:
         print("La central de campo se sostiene.")

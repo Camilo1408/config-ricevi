@@ -18,6 +18,10 @@ Documentation=file://__RAIZ__/docs/manual-de-campo.md
 # antes de tener IP, fallar al abrir el socket y consumir reintentos.
 After=network-online.target
 Wants=network-online.target
+# Sin esto, un fallo que se repite deja el servicio parado tras cinco intentos
+# y la jornada se pierde en silencio. Va en [Unit] y no en [Service]: ahi
+# systemd lo ignora con un aviso y el limite de reintentos sigue puesto.
+StartLimitIntervalSec=0
 
 [Service]
 Type=simple
@@ -39,9 +43,6 @@ ExecStart=__RAIZ__/.venv/bin/uvicorn app.main:app \
 # reinicio.
 Restart=always
 RestartSec=5
-# Sin esto, un fallo que se repite deja el servicio parado tras cinco intentos
-# y la jornada se pierde en silencio.
-StartLimitIntervalSec=0
 
 # Parada ordenada: la central cierra la base y consolida el WAL en su ciclo de
 # vida. 40 s de margen es de sobra y evita que systemd la mate a mitad.

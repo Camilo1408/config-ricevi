@@ -1,7 +1,7 @@
 # Arquitectura y configuración del sistema RiceVi
 
 **Documento de diseño · hardware, red y flujo de datos**
-Versión 1.3 — 23 de octubre de 2026
+Versión 1.3 — 23 de octubre de 2026, revisada el 24 (§5.1, `session_id`)
 
 Este documento describe el sistema completo tal como va montado en la
 cosechadora: qué hardware lo compone, cómo se alimenta, cómo se comunica, cómo
@@ -459,7 +459,7 @@ capturar, el dataset queda partido en dos mitades que no se pueden comparar.
 | Identificador | Forma | Quién lo asigna | Cuándo cambia |
 |---|---|---|---|
 | `machine_id` | `M01` | Fijo del proyecto | Si hay una segunda cosechadora |
-| `session_id` | `R001`, `R002`… | La central al arrancar | Una por jornada |
+| `session_id` | `R001`, `R002`… | La central al arrancar | En cada arranque de la central, normalmente uno por jornada. Nunca se repite, aunque la corrida anterior no guardara frames |
 | `node_id` | `CAM01`…`NU02` | El censo, grabado en NVS | **Nunca.** Es la identidad del equipo |
 | `sensor_id` | `HALL01`, `US01`, `GPS01`… | El censo | **Nunca.** Sigue al sensor aunque cambie de placa |
 | `boot_id` | `B01`, `B02`… | El nodo | En cada arranque |

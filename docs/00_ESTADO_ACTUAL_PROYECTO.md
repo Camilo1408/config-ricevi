@@ -1,6 +1,6 @@
 # ESTADO ACTUAL DEL PROYECTO — FUENTE DE VERDAD
 
-**Última actualización:** 23 de octubre de 2026
+**Última actualización:** 24 de octubre de 2026
 **Versión anterior:** `historico/00_ESTADO_ACTUAL_PROYECTO_2026-09-21c.md` (y las que esa cita)
 **Estatus:** prototipo en banco, fase 1 (dataset). Arquitectura **v1.3**: siete nodos ESP32 y la
 velocidad de avance por **GPS USB**. Próximo hito: montaje completo y primera salida a campo a mediados
@@ -21,6 +21,10 @@ de noviembre (§9)
    Código, configuración, guías y diagramas actualizados en el repositorio.
 3. **Documentos.** Este archivo pasa al repositorio (`config-ricevi/docs/`), junto a los capítulos 01–03,
    para que la fuente de verdad viaje con el código.
+4. **Primera prueba del GPS (24-oct).** El VK-162 ya está en la Pi: la central lo encuentra sola y da
+   solución al aire libre. Cierra **T4**; los resultados están en §7-A9. Ese día se corrigió también la
+   numeración de sesiones, que sin cámaras repetía el `session_id` en cada reinicio. La sesión **R007**
+   de la mesa mezcla varias corridas y no debe usarse.
 
 ---
 
@@ -130,7 +134,6 @@ ajuste óptimo · control de la máquina · que seguir las sugerencias reduce p�
 | **T1** | **LED de tolva en el firmware** | `camara.ino` todavía no lo maneja | Encender, descartar 1–2 cuadros, capturar, apagar; ventana de 150–300 ms en el plan |
 | **T2** | **Divisor de batería en las placas** | `divisor_montado: False` en el censo | Soldarlo en las perforadas y pasar a `True` |
 | **T3** | **MAC de `NU01` y `NU02`** | Faltan en el censo | Provisionarlos y crear sus reservas DHCP |
-| **T4** | **Comprar y probar el GPS VK-162** | Decidido (C34); compra **por confirmar** | Conectarlo a la Pi, `instalar_pi.sh` paso 5/8, solución al aire libre y fila GPS en verde en el HMI |
 | **T5** | **Precio total de la lista de materiales** | 01 §9 dice *por confirmar* | Recalcular con la cotización del equipo (`Desktop/Cotizacion_depurado.xlsx`) |
 | **T6** | **Cableado del Hall** | Funciona en protoboard con 10 kΩ | Confirmar si el cable OUT→col. 12 sigue haciendo falta y actualizar el diagrama de la perforada |
 | **T7** | **Capacidad real de las pilas AA** | La caja dice 3600 mAh; se calcula con 2600 | Descarga completa de un juego |
@@ -142,7 +145,8 @@ ajuste óptimo · control de la máquina · que seguir las sugerencias reduce p�
 | **X1** | Terminología de la «altura de corte» | La arquitectura mide `header_height`. Si la tesis habla de altura de corte, revisar `03_CORTE` §7 (longitud de rastrojo, ISO 6689) |
 | **X11** | Instrumentar el ventilador | Bloque Limpieza |
 
-*Resueltas o sin objeto: X2–X10; D4, D5, D9 (C28–C30); D10b + D11 (C40); H5 y A4, por C34.*
+*Resueltas o sin objeto: X2–X10; D4, D5, D9 (C28–C30); D10b + D11 (C40); H5 y A4, por C34; T4, el GPS
+comprado y probado en la Pi (24-oct).*
 
 ---
 
@@ -212,6 +216,11 @@ iluminación se multiplica por nueve), lo que refuerza acotar el análisis por n
    `/dev/serial/by-id/` y la provisión de nodos debe elegir el puerto por nombre.
 4. **El tiempo GPS no se usa todavía para la hora civil.** Sería una mejora para `utc_quality` sin RTC ni
    Internet; hoy la hora sigue saliendo del RTC.
+5. **Primera prueba (24-oct), en mesa y al aire libre.** Solución desde el primer minuto, una por segundo,
+   con solo 5 satélites y HDOP 2,6, que pasaron a 6 y 1,9 en unos diez minutos. Sin mover la antena a
+   propósito, la cruda tuvo media de 0,07 m/s y picos de 0,47 m/s, y 4 de 311 filtradas pasaron el umbral
+   de reposo (0,22–0,30 m/s). Al moverla a mano marcó picos de 0,86 m/s. Antes de tocar el umbral o la
+   ventana hay que repetir la medida con la antena plana, lejos de la Pi y con ocho o más satélites (02 §3.4).
 
 ### Hallazgos de la revisión de arquitectura todavía abiertos
 **H3** nivel de llenado de la tolva · **H7** energía y luz del LED (D10a) · **H8** anotación y ground truth —
@@ -226,7 +235,7 @@ el mayor riesgo de calendario.
 |---|---|
 | `config-ricevi-campo/` = repo `github.com/Camilo1408/config-ricevi` | **El sistema que va a la cosechadora** y su documentación vigente |
 | `config-ricevi-campo/docs/00_ESTADO_ACTUAL_PROYECTO.md` | **Fuente de verdad** (este archivo; copia en `PROYECTO/docs/`) |
-| `config-ricevi-campo/docs/01–03.md` | **Arquitectura v1.3** (23-oct). `.docx`/`.pdf` en `docs/entregables/`, generados con `herramientas/generar_documentos.ps1` |
+| `config-ricevi-campo/docs/01–03.md` | **Arquitectura v1.3** (23-oct, revisada el 24). `.docx`/`.pdf` en `docs/entregables/`, generados con `herramientas/generar_documentos.ps1` |
 | `config-ricevi-campo/docs/historico/` | Versiones anteriores de este archivo |
 | `PROYECTO/docs/conexiones_nodos_y_central.html`, `puesta_en_marcha.html` | Páginas de cableado y de puesta en mesa (15–21-oct). **Todavía muestran `NH02`**, ahora con un aviso arriba: el cableado de `NH01`, `NU01`/`NU02` y cámaras sigue valiendo; lo de la rueda no |
 | `sistema-arroz-front/` | Landing informativa (Vercel), ya con GPS y siete nodos |
@@ -238,9 +247,10 @@ el mayor riesgo de calendario.
 
 ## 9. Próximo paso
 
-1. **Mesa (hasta mediados de noviembre):** GPS en la Pi (T4), LED de tolva en el firmware (T1), divisores
-   de batería (T2), `NU01`/`NU02` provisionados (T3) y los siete nodos en placa perforada. Cerrar con
-   `prueba_humo.py` (50/50) y `verificar_campo.py` al aire libre.
+1. **Mesa (hasta mediados de noviembre):** LED de tolva en el firmware (T1), divisores de batería (T2),
+   `NU01`/`NU02` provisionados (T3), los siete nodos en placa perforada y una segunda medida del GPS en
+   reposo con la antena en su sitio (§7-A9). Cerrar con `prueba_humo.py` (52/52) y `verificar_campo.py`
+   al aire libre.
 2. **Primera salida:** prueba de ultrasónicos (C28), tramo medido del GPS (P8) y las cuatro constantes de
    `calibracion.json`.
 3. **Captura (mediados de noviembre a diciembre):** al menos 2–3 jornadas, una reservada para prueba (C29).

@@ -254,6 +254,19 @@ def _migrar(con: sqlite3.Connection) -> None:
             con.execute(f"ALTER TABLE estado_maquina ADD COLUMN {col} {tipo}")
 
 
+def sesiones_registradas() -> list[str]:
+    """Los session_id que ya tienen fila en `sesiones`. Vacio si la base es nueva.
+
+    Se consulta ANTES de inicializar, para numerar la sesion nueva, asi que la
+    tabla puede no existir todavia.
+    """
+    con = conexion()
+    if con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sesiones'"
+                   ).fetchone() is None:
+        return []
+    return [f["session_id"] for f in con.execute("SELECT session_id FROM sesiones")]
+
+
 def inicializar(session_id: str, clock_epoch_id: str, inicio_utc: str,
                 censo_version: str, modelo: str, acta_json: str) -> None:
     global _sesion_actual

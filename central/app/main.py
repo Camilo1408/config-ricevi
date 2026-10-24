@@ -47,14 +47,22 @@ def _nuevo_session_id() -> str:
     El session_id aparece en el frame_id, en los nombres de carpeta y en las
     conversaciones ("la R003 salio mal"). Un UUID seria ilegible y haria
     imposible teclear una ruta de memoria.
+
+    El numero sigue al mayor de los ya usados, mirando las carpetas de frames Y
+    la tabla `sesiones`. Solo con las carpetas, una corrida sin camaras no deja
+    la suya y la siguiente repetia el mismo id con el reloj de sesion vuelto a
+    cero: dos corridas mezcladas bajo un solo session_id, el HMI mostrando un
+    dato viejo como actual (R007, 24-oct-2026), y el GPS de la segunda
+    descartado por el UNIQUE de telemetria, porque su boot_id es el session_id
+    y su seq vuelve a empezar en 1. Solo con la base, si esta se rota o se borra,
+    se repetirian los nombres de las carpetas que siguen en el disco.
     """
+    usados = set(basedatos.sesiones_registradas())
     base = config.DIR_FRAMES
-    existentes = []
     if base.exists():
-        for d in base.iterdir():
-            if d.is_dir() and d.name.startswith("R") and d.name[1:].isdigit():
-                existentes.append(int(d.name[1:]))
-    return f"R{(max(existentes) + 1) if existentes else 1:03d}"
+        usados.update(d.name for d in base.iterdir() if d.is_dir())
+    numeros = [int(s[1:]) for s in usados if s.startswith("R") and s[1:].isdigit()]
+    return f"R{max(numeros, default=0) + 1:03d}"
 
 
 def _acta(session_id: str) -> dict:

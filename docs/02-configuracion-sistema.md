@@ -9,7 +9,9 @@ capítulo 1; el **procedimiento** de una jornada, en el capítulo 3.
 `NH02` y quedan siete ESP32 (§1, §2.2, §3, §4.4, §7). La versión 1.2 pasó los
 nodos de sensor a ESP32-C6 con ultrasónico RCWL-1655, los nodos a 4 pilas AA
 Ni-MH sin microSD, la central a una batería LiFePO4 de 12 V y el punto de acceso
-a un router Tenda N301.*
+a un router Tenda N301. La revisión del 24 de octubre corrige la unidad del
+servicio (§3.3) y añade la primera prueba del GPS (§3.4) y el acceso en mesa sin
+el punto de acceso (§3.5).*
 
 ---
 
@@ -127,6 +129,7 @@ sudo systemctl restart ricevi-central
 `Restart=always` y no `on-failure`: si el proceso termina por cualquier motivo
 durante una jornada, hay que volver a capturar. `StartLimitIntervalSec=0` evita
 que systemd se rinda tras cinco intentos y deje la jornada perdida en silencio.
+Va en la sección `[Unit]`, porque en `[Service]` systemd lo ignora.
 
 `TimeoutStopSec=40` da margen para que la central cierre la base y consolide el
 disco antes de que systemd la mate.
@@ -160,6 +163,66 @@ curl -s localhost:8000/api/status | python3 -m json.tool | grep -A14 '"gps"'
 ```
 
 En `$GPRMC` la tercera columna es `A` cuando hay solución y `V` cuando no.
+
+**Primera prueba con el receptor (24-oct-2026).** Conectado a un USB de la Pi, la
+central lo encontró por `by-id` sin ningún ajuste (ModemManager y `gpsd`
+inactivos, usuario en `dialout`) y dio solución al aire libre desde el primer
+minuto, una por segundo. Vio solo 5 satélites con HDOP 2,6, que pasaron a 6 y
+1,9 en unos diez minutos. Sin mover la antena a propósito, la velocidad cruda
+tuvo una media de 0,07 m/s y picos de 0,47 m/s, y 4 de 311 muestras filtradas
+pasaron el umbral de reposo, con 0,22–0,30 m/s. Al mover la antena a mano, la
+central marcó tramos de unos 8 s con picos de 0,86 m/s.
+
+Cinco o seis satélites es poco para cielo abierto. Antes de cambiar
+`umbral_reposo_mps` o `ventana_filtro_s` hay que repetir la medida con la antena
+plana, mirando al cielo y a un metro o más de la Pi y del SSD, y ver si con ocho
+o más satélites el ruido en reposo baja del umbral.
+
+Para seguir el GPS sin parar el servicio, desde la propia Pi:
+
+```bash
+watch -n1 'curl -s localhost:8000/api/status | python3 -m json.tool | grep -A16 "\"gps\""'
+sqlite3 -readonly -column /datos/ricevi/ricevi.db "SELECT seq, magnitud, round(valor,2) valor, calidad, codigo_calidad FROM telemetria WHERE sensor_id='GPS01' ORDER BY id DESC LIMIT 8"
+```
+
+### 3.5 Acceso en mesa, sin el punto de acceso
+
+En campo, el HMI está en `http://192.168.40.2:8000`, dentro de la red del
+router. En mesa, sin el router, la Pi se conecta a cualquier Wi-Fi que tenga
+guardada y la central funciona igual, con el GPS incluido. Lo único que falta
+son los nodos, porque solo conocen la red del router. El HMI no pide clave y se
+abre de tres maneras:
+
+| Desde | Dirección | Requisito |
+|---|---|---|
+| La propia Pi | `http://localhost:8000` | Monitor o pantalla compartida de Raspberry Pi Connect |
+| Un portátil en la misma Wi-Fi | `http://ricevi-rasp-01.local:8000` | mDNS (Avahi), que deja instalado `instalar_pi.sh` |
+| Un portátil en cualquier red | `http://ricevi-rasp-01:8000` | La Pi y el portátil en la misma cuenta de Tailscale, los dos con Internet |
+
+Sin Internet ni Wi-Fi conocida, el hotspot de un teléfono sirve de red común.
+Tailscale es solo acceso de mantenimiento: en el lote no hay Internet y la
+captura no depende de él.
+
+Desde PowerShell, sin entrar a la Pi, una línea por segundo con el estado del
+GPS:
+
+```powershell
+while ($true) { $g = (Invoke-RestMethod http://ricevi-rasp-01:8000/api/status).gps.ultima; "{0:HH:mm:ss}  vel {1:N2} m/s  filtrada {2:N2} m/s  {3}  sat {4}  hdop {5}" -f (Get-Date), $g.ground_speed_mps, $g.ground_speed_filtrada_mps, $g.codigo, $g.satelites, $g.hdop; Start-Sleep 1 }
+```
+
+Para no escribir la contraseña en cada `ssh` ni en cada paso de
+`copiar_a_pi.ps1`, se autoriza una vez la llave del portátil:
+
+```powershell
+scp $env:USERPROFILE\.ssh\id_ed25519.pub ricevi-rasp@ricevi-rasp-01.local:/tmp/llave.pub
+ssh ricevi-rasp@ricevi-rasp-01.local "mkdir -p ~/.ssh && chmod 700 ~/.ssh && cat /tmp/llave.pub >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys && rm /tmp/llave.pub"
+```
+
+No conviene pasar la llave por una tubería (`Get-Content llave.pub | ssh ...`).
+Windows PowerShell 5.1 puede anteponerle una marca BOM al texto, la línea queda
+ilegible para `sshd` y la llave se ignora sin ningún mensaje de error. `scp`
+copia el archivo tal cual. `sudo` sigue pidiendo la contraseña, así que instalar
+la unidad del servicio o reiniciarlo se hace con `ssh -t`.
 
 ---
 
@@ -331,14 +394,19 @@ de inferencia se duplica.
 | Script | Dónde corre | Qué comprueba |
 |---|---|---|
 | `config/censo.py` | Cualquiera | Coherencia del censo y calibraciones sin medir |
-| `herramientas/prueba_humo.py` | Portátil | 50 comprobaciones de la central, **sin hardware** |
+| `herramientas/prueba_humo.py` | Portátil | 52 comprobaciones de la central, **sin hardware** |
 | `herramientas/verificar_campo.py` | Portátil | El montaje completo, antes de arrancar el motor |
 
 `prueba_humo.py` se ejecuta tras cualquier cambio en `central/app/`. Levanta la
 central en memoria y recorre el camino entero: registro, reloj, turnos, frames,
 idempotencia, telemetría, la regla del nulo, el GPS con tramas NMEA escritas a
 mano (conversión, suma de verificación, sin solución, reposo y fusión),
-batería y trazabilidad.
+batería, trazabilidad y que cada reinicio abra una sesión nueva aunque la
+anterior no guardara frames.
+
+Está pensado para el portátil. En la Pi solo pasa entero con `TMPDIR` en el
+NVMe, porque `/tmp` es un disco en RAM de 4 GB y la central rechaza frames con
+menos de `RESERVA_MB` (8 GB) libres, y con `httpx` instalado aparte del `.venv`.
 
 `verificar_campo.py` comprueba doce cosas en orden, de modo que **la primera que
 falla dice dónde está el problema**: censo, tokens, central, nodos en línea,

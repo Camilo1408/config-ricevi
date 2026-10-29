@@ -1,0 +1,43 @@
+# ricevi-ia-demo.service - Demostración del modelo de tolva, aparte de la central.
+#
+# instalar_demo.sh sustituye __RAIZ__, __USUARIO__ y __FRAMES__ y lo copia a
+# /etc/systemd/system/.
+#
+#   sudo systemctl start ricevi-ia-demo
+#   journalctl -u ricevi-ia-demo -f
+#
+# Para cambiar la versión del modelo que carga al arrancar:
+#   sudo systemctl edit ricevi-ia-demo
+#   [Service]
+#   Environment=IA_MODELO=v2
+
+[Unit]
+Description=RiceVi - demostracion del modelo de tolva (no interviene en la captura)
+After=network-online.target ricevi-central.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=__USUARIO__
+WorkingDirectory=__RAIZ__
+Environment=PYTHONUNBUFFERED=1
+Environment=IA_DIR_FRAMES=__FRAMES__
+Environment=IA_HILOS=3
+ExecStart=__RAIZ__/.venv/bin/uvicorn app:app --host 0.0.0.0 --port 8001 --log-level info --no-access-log
+Restart=on-failure
+RestartSec=5
+
+# La captura es lo prioritario de esta maquina: la demo cede la CPU.
+Nice=10
+IOSchedulingClass=idle
+
+# Todo el sistema de archivos queda de solo lectura para este proceso: puede
+# leer los frames de la central, pero no escribir en sus datos ni en ningún otro
+# sitio. El servicio no necesita escribir: los resultados viven en memoria.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target

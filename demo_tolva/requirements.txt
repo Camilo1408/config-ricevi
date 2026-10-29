@@ -1,0 +1,10 @@
+# Servicio de demostración del modelo de tolva (puerto 8001).
+# Entorno virtual propio: no comparte paquetes con la central.
+# ncnn tiene ruedas aarch64 para Python 3.11 en PyPI, así que no hay que compilarlo.
+fastapi==0.115.0
+uvicorn==0.30.6
+python-multipart==0.0.9
+# numpy y pillow con rango y no fijos: así instalan tanto en Bookworm (3.11) como en Trixie (3.13).
+numpy>=1.26,<3
+pillow>=10.4
+ncnn==1.0.20261020

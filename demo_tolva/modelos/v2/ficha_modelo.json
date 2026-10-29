@@ -1,0 +1,113 @@
+{
+  "modelo": "RiceVi tolva · material vegetal verde visible",
+  "version": "20261029-0725",
+  "quick": false,
+  "arquitectura": "U-Net ligera, codificador mobilenetv3_large_100 (timm), preentrenado ImageNet: True",
+  "entrada": "tesela RGB 512x512, valores 0-255 (normalización dentro del modelo)",
+  "salida": "probabilidad por píxel de material vegetal verde",
+  "umbral": 0.6,
+  "tile": 512,
+  "teselado": "teselas solapadas que cubren el cuadro; probabilidad promediada en los solapes",
+  "datos": {
+    "origen": "videos de celular, tolva de cosechadora, 8 de mayo de 2026, Palermo (Huila)",
+    "entrenamiento": [
+      "IMG_8312_0007.jpg",
+      "IMG_8312_0019.jpg",
+      "IMG_8312_0025.jpg",
+      "IMG_8312_0031.jpg",
+      "IMG_8312_0037.jpg",
+      "IMG_8312_0043.jpg",
+      "IMG_8312_0049.jpg",
+      "IMG_8312_0055.jpg",
+      "IMG_8312_0061.jpg",
+      "IMG_8312_0067.jpg",
+      "IMG_8312_0073.jpg",
+      "IMG_8312_0079.jpg",
+      "IMG_8312_0085.jpg",
+      "IMG_8312_0091.jpg",
+      "IMG_8312_0097.jpg",
+      "IMG_8312_0103.jpg",
+      "IMG_8312_0109.jpg",
+      "IMG_8312_0115.jpg",
+      "IMG_8312_0121.jpg",
+      "IMG_8312_0127.jpg",
+      "IMG_8312_0133.jpg",
+      "IMG_8312_0139.jpg",
+      "IMG_8312_0145.jpg",
+      "IMG_8312_0157.jpg"
+    ],
+    "validacion": [
+      "IMG_8312_0013.jpg",
+      "IMG_8312_0151.jpg"
+    ],
+    "prueba": [
+      "IMG_1577_0011.jpg",
+      "IMG_1577_0015.jpg",
+      "IMG_1577_0022.jpg",
+      "IMG_1577_0026.jpg",
+      "IMG_1577_0030.jpg",
+      "IMG_1577_0034.jpg"
+    ],
+    "particion": "por video: entrenamiento y validación IMG_8312, prueba IMG_1577",
+    "fragmentos_anotados": 1650
+  },
+  "metricas_prueba_modelo": {
+    "error % (puntos, media)": 0.6818897890946501,
+    "recall fragmentos": 0.9619565217391305,
+    "precisión fragmentos": 0.29082426127527217,
+    "Dice verde": 0.40845707324726144,
+    "IoU verde": 0.2566421969407044,
+    "fragmentos anotados": 184,
+    "fragmentos predichos": 643,
+    "% verde medio": 1.2118859310699588
+  },
+  "metricas_prueba_regla_color": {
+    "error % (puntos, media)": 1.6246945730452678,
+    "recall fragmentos": 0.9130434782608695,
+    "precisión fragmentos": 0.012978703957590714,
+    "Dice verde": 0.15684783454783874,
+    "IoU verde": 0.08509760479236445,
+    "fragmentos anotados": 184,
+    "fragmentos predichos": 32823,
+    "% verde medio": 2.154690715020576
+  },
+  "regla_color": {
+    "G-R": -16,
+    "G-B": 30,
+    "S": 60
+  },
+  "entrenamiento_min": 54.3,
+  "ncnn_coincide_con_pytorch": true,
+  "sha256": {
+    "tolva_unet.ncnn.param": "c4348797d77e180c440ad6634cd8c28d8e3feb7df3d3208fa96f7c22c0bc6bfc",
+    "tolva_unet.ncnn.bin": "4dbe1f20acc042346b5d403067f76af88a33a48d1105d69abdc4ee1cd6f9e998"
+  },
+  "limites": [
+    "Prueba de concepto: pocas imágenes anotadas por una persona.",
+    "Entrenamiento y prueba son de la misma jornada; no se ha probado en otro día, lote ni variedad.",
+    "Imágenes de celular al sol; la CAM04 (OV3660 con LED propio) ve distinto y requiere su propio dataset.",
+    "Mide fracción visual de la superficie, no masa; no detecta paja seca ni cascarilla."
+  ],
+  "metricas_prueba_anotacion_original": {
+    "modelo": {
+      "IoU verde": 0.12736866883753775,
+      "Dice verde": 0.22595743940422125,
+      "error % (puntos, media)": 1.0379935056584362,
+      "recall fragmentos": 1.0,
+      "precisión fragmentos": 0.14152410575427682,
+      "fragmentos anotados": 89.0,
+      "fragmentos predichos": 643.0
+    },
+    "regla_color": {
+      "IoU verde": 0.0455971040750111,
+      "Dice verde": 0.08721734958389855,
+      "error % (puntos, media)": 1.9807982896090532,
+      "recall fragmentos": 0.9213483146067416,
+      "precisión fragmentos": 0.005301160771410292,
+      "fragmentos anotados": 89.0,
+      "fragmentos predichos": 32823.0
+    }
+  },
+  "metricas_prueba_nota": "Prueba reanotada el 29-oct-2026 (240 fragmentos en 6 cuadros de IMG_1577), la misma para v1 y v2. Regla de color ajustada con las etiquetas de entrenamiento de cada versión.",
+  "equipo_entrenamiento": "PC del equipo, NVIDIA GeForce GTX 1650 (4 GB), PyTorch 2.14.1 + CUDA 12.6"
+}

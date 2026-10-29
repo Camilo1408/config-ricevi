@@ -51,6 +51,7 @@ config-ricevi-campo/
 ├── modelos/         interfaz de modelo, el nulo y el de producción
 ├── nodos/           firmware de los siete ESP32 (S3 en cámaras, C6 en sensores)
 ├── herramientas/    instalación, provisión, verificación, respaldo y exportación
+├── demo_tolva/      demostración del modelo de tolva, aparte de la captura (puerto 8001)
 └── docs/            estado del proyecto, diseño, configuración y manual de campo
 ```
 
@@ -106,6 +107,18 @@ python herramientas/verificar_campo.py
 ```bash
 ./herramientas/respaldo_jornada.sh /media/respaldo
 ```
+
+## Demostración del modelo de tolva (aparte de la captura)
+
+`demo_tolva/` es un servicio **opcional** que muestra el primer modelo entrenado
+(segmentación de material vegetal verde en la tolva) en `http://<ip-de-la-pi>:8001`.
+Tiene carpeta, entorno de Python, servicio y puerto propios, cede la CPU a la
+central y el sistema operativo le impide escribir en disco. **No activa la
+fase 2**: la central sigue con `RICEVI_MODELO=ninguno`.
+
+**Durante una jornada de captura va apagado:**
+`sudo systemctl disable --now ricevi-ia-demo`. Instalación, verificación y
+desinstalación en `demo_tolva/README.md`.
 
 ## Lo que hay que medir con un metro antes de publicar nada
 

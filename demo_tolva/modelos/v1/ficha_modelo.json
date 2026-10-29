@@ -1,0 +1,99 @@
+{
+  "modelo": "RiceVi tolva · material vegetal verde visible",
+  "version": "20261029-0445",
+  "quick": false,
+  "arquitectura": "U-Net ligera, codificador mobilenetv3_large_100 (timm), preentrenado ImageNet: True",
+  "entrada": "tesela RGB 512x512, valores 0-255 (normalización dentro del modelo)",
+  "salida": "probabilidad por píxel de material vegetal verde",
+  "umbral": 0.4,
+  "tile": 512,
+  "teselado": "teselas solapadas que cubren el cuadro; probabilidad promediada en los solapes",
+  "datos": {
+    "origen": "videos de celular, tolva de cosechadora, 8 de mayo de 2026, Palermo (Huila)",
+    "entrenamiento": [
+      "IMG_8312_0007.jpg",
+      "IMG_8312_0037.jpg",
+      "IMG_8312_0049.jpg",
+      "IMG_8312_0061.jpg",
+      "IMG_8312_0073.jpg",
+      "IMG_8312_0091.jpg",
+      "IMG_8312_0103.jpg",
+      "IMG_8312_0115.jpg",
+      "IMG_8312_0127.jpg",
+      "IMG_8312_0157.jpg"
+    ],
+    "validacion": [
+      "IMG_8312_0019.jpg",
+      "IMG_8312_0145.jpg"
+    ],
+    "prueba": [
+      "IMG_1577_0011.jpg",
+      "IMG_1577_0015.jpg",
+      "IMG_1577_0022.jpg",
+      "IMG_1577_0026.jpg",
+      "IMG_1577_0030.jpg",
+      "IMG_1577_0034.jpg"
+    ],
+    "particion": "por video: entrenamiento y validación IMG_8312, prueba IMG_1577",
+    "fragmentos_anotados": 418
+  },
+  "metricas_prueba_modelo": {
+    "error % (puntos, media)": 0.42791120113168724,
+    "recall fragmentos": 0.5271739130434783,
+    "precisión fragmentos": 0.8014184397163121,
+    "Dice verde": 0.26889281672410065,
+    "IoU verde": 0.15532996415349357,
+    "fragmentos anotados": 184,
+    "fragmentos predichos": 141,
+    "% verde medio": 0.10208494084362141
+  },
+  "metricas_prueba_regla_color": {
+    "error % (puntos, media)": 0.7041618441358025,
+    "recall fragmentos": 0.9021739130434783,
+    "precisión fragmentos": 0.014000643707756678,
+    "Dice verde": 0.21519985056198715,
+    "IoU verde": 0.12057363992811632,
+    "fragmentos anotados": 184,
+    "fragmentos predichos": 24856,
+    "% verde medio": 1.2341579861111112
+  },
+  "regla_color": {
+    "G-R": -12,
+    "G-B": 20,
+    "S": 60
+  },
+  "entrenamiento_min": 86.3,
+  "ncnn_coincide_con_pytorch": true,
+  "sha256": {
+    "tolva_unet.ncnn.param": "c4348797d77e180c440ad6634cd8c28d8e3feb7df3d3208fa96f7c22c0bc6bfc",
+    "tolva_unet.ncnn.bin": "a2cdd483f495a6c3a00d42e942f2af35938c8de8b3276226a26f3acb4e2e63cf"
+  },
+  "limites": [
+    "Prueba de concepto: pocas imágenes anotadas por una persona.",
+    "Entrenamiento y prueba son de la misma jornada; no se ha probado en otro día, lote ni variedad.",
+    "Imágenes de celular al sol; la CAM04 (OV3660 con LED propio) ve distinto y requiere su propio dataset.",
+    "Mide fracción visual de la superficie, no masa; no detecta paja seca ni cascarilla."
+  ],
+  "equipo_entrenamiento": "PC del equipo, NVIDIA GeForce GTX 1650 (4 GB), PyTorch 2.14.1 + CUDA 12.6",
+  "metricas_prueba_anotacion_original": {
+    "modelo": {
+      "IoU verde": 0.2643517325183194,
+      "Dice verde": 0.41816169617893756,
+      "error % (puntos, media)": 0.09085648148148147,
+      "recall fragmentos": 0.6853932584269663,
+      "precisión fragmentos": 0.524822695035461,
+      "fragmentos anotados": 89.0,
+      "fragmentos predichos": 141.0
+    },
+    "regla_color": {
+      "IoU verde": 0.07148798747369967,
+      "Dice verde": 0.1334368435473559,
+      "error % (puntos, media)": 1.0602655606995885,
+      "recall fragmentos": 0.9101123595505618,
+      "precisión fragmentos": 0.006517541036369488,
+      "fragmentos anotados": 89.0,
+      "fragmentos predichos": 24856.0
+    }
+  },
+  "metricas_prueba_nota": "Prueba reanotada el 29-oct-2026 (240 fragmentos en 6 cuadros de IMG_1577), la misma para v1 y v2. Regla de color ajustada con las etiquetas de entrenamiento de cada versión."
+}

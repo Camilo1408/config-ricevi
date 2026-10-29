@@ -1,0 +1,6 @@
+# Esta carpeta se copia tal cual a la Pi: los scripts tienen que llegar con
+# saltos de linea de Linux aunque el clon este en Windows.
+*.sh      text eol=lf
+*.service text eol=lf
+*.py      text eol=lf
+*.txt     text eol=lf

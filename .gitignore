@@ -16,6 +16,9 @@ modelos/pesos/*.bin
 modelos/pesos/*.param
 modelos/pesos/*.onnx
 !modelos/pesos/manifiesto.ejemplo.json
+# Lo mismo para la demo del modelo de tolva: la ficha (con su SHA-256) si va.
+demo_tolva/modelos/*/*.bin
+demo_tolva/modelos/*/*.param
 
 # --- entorno -------------------------------------------------------------
 .venv/
